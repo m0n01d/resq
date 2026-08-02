@@ -36,7 +36,11 @@ fn main() -> anyhow::Result<()> {
             source,
             format,
         })),
-        Command::Refs { .. } => unimplemented!("A7: refs.rs"),
+        Command::Refs {
+            file,
+            names,
+            format,
+        } => resq::refs::run(file, names, format),
         Command::Set { command } => match command {
             SetCommand::Decl(_) => unimplemented!("A9: set decl"),
         },
