@@ -453,3 +453,24 @@ cargo build && cargo clippy -- -D warnings && cargo test
 passes, **and** the agent's own module has tests exercising its command against
 `tests/fixtures/`. The conductor re-runs this independently before merging — per house rule,
 **trust the diff, not the agent's report.**
+
+### 7.1 The compile gate
+
+`cargo test` includes `tests/compile_check.rs`, which applies resq's write commands to a copy of a
+real ReScript project and runs the **actual ReScript compiler** over the result.
+
+This exists because every other test asserts output *parses*, which is weaker than asserting it
+*compiles*. `writer::validate_output` cannot see a type error or an unresolvable name — and the one
+real bug that shipped past the whole suite was exactly that shape (`rm open` mistaking labeled-
+argument labels for value references, removing an `open` the file still needed).
+
+- Fixture: `../rescript-hello` by default; override with `RESQ_COMPILE_FIXTURE=/path/to/project`.
+  The project must already have `node_modules` — the test never runs `npm install`.
+- **Skips (passes with a printed notice)** when the fixture, its `node_modules`, or `npx` is
+  missing, so resq stays testable without a Node toolchain. Use `cargo test -- --nocapture` to see
+  whether it ran or skipped — a silent skip is the failure mode to watch for.
+- A companion test, `compile_gate_actually_detects_breakage`, injects a type error and asserts the
+  gate fails. A compile check that cannot fail is worthless; this proves the failure path works.
+
+Verified: reverting the labeled-argument fix makes the gate fail at the `rm open` step, naming the
+command and quoting resq's own error.
