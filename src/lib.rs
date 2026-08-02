@@ -11,6 +11,7 @@
 //!    [`parser::decl_span_with_attachments`] rather than rediscovering this.
 
 pub mod cli;
+pub mod grep;
 pub mod parser;
 pub mod writer;
 

@@ -6,7 +6,27 @@ fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::List { .. } => unimplemented!("A2: analysis.rs"),
         Command::Get { .. } => unimplemented!("A3: extract.rs"),
-        Command::Grep { .. } => unimplemented!("A5: grep.rs"),
+        Command::Grep {
+            pattern,
+            path,
+            fixed,
+            ignore_case,
+            include_comments,
+            include_strings,
+            definitions,
+            source,
+            format,
+        } => std::process::exit(resq::grep::execute(resq::grep::GrepArgs {
+            pattern,
+            path,
+            fixed,
+            ignore_case,
+            include_comments,
+            include_strings,
+            definitions,
+            source,
+            format,
+        })),
         Command::Refs { .. } => unimplemented!("A7: refs.rs"),
         Command::Set { command } => match command {
             SetCommand::Decl(_) => unimplemented!("A9: set decl"),
