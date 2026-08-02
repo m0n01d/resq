@@ -17,6 +17,7 @@ report** rather than working around it.
 
 | Fact | Value |
 |---|---|
+| **Target language version** | **ReScript 12.3.0** — latest stable (13.x is alpha-only). Verified: all 22 v12 constructs in `tests/rescript12_syntax.rs` parse cleanly under the pinned grammar, including `dict{}`, bigint `42n`, regex literals, tagged templates, `@tag`/`@unboxed`, variant spread, async/await, and optional record fields. **Do not target v11 semantics.** |
 | Grammar | `rescript-lang/tree-sitter-rescript`, tag **`v6.0.0`**, MIT, actively maintained |
 | Grammar on crates.io | **No.** Not published. Use a git dependency. |
 | Grammar on npm | **No.** Not published. |
