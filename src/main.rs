@@ -43,11 +43,11 @@ fn main() -> anyhow::Result<()> {
         Command::Patch { .. } => unimplemented!("A9: patch"),
         Command::Rm { command } => match command {
             RmCommand::Decl(_) => unimplemented!("A9: rm decl"),
-            RmCommand::Open(_) => unimplemented!("A8: rm open"),
+            RmCommand::Open(args) => resq::imports::run_rm_open(args),
         },
         Command::Add { command } => match command {
-            AddCommand::Open(_) => unimplemented!("A8: add open"),
-            AddCommand::Alias(_) => unimplemented!("A8: add alias"),
+            AddCommand::Open(args) => resq::imports::run_add_open(args),
+            AddCommand::Alias(args) => resq::imports::run_add_alias(args),
         },
         Command::Guide => unimplemented!("conductor: guide.md"),
     }
