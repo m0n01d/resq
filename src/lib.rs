@@ -12,6 +12,7 @@
 
 pub mod analysis;
 pub mod cli;
+pub mod edit;
 pub mod extract;
 pub mod grep;
 pub mod parser;
