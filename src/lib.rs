@@ -18,6 +18,7 @@ pub mod grep;
 pub mod imports;
 pub mod parser;
 pub mod project;
+pub mod refs;
 pub mod writer;
 
 use serde::{Serialize, Serializer};
