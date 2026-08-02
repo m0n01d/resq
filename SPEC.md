@@ -363,6 +363,27 @@ Scope decision: **reads + single-file writes.** Project-wide refactors (`mv`, `r
 There are deliberately no `expose`/`unexpose` commands — see §3.3. `.res` and `.resi` are both
 edited with the commands above.
 
+### 4.1 Known limitation: `get -f` group boundaries
+
+`resq get -f <FILE> <PATH>... [-f …]` is inherently ambiguous as declared, and **this is inherited
+from elmq**, which has the identical shape. clap flattens repeated multi-value args into one vector,
+so `-f a.res foo -f b.res bar` and `-f a.res foo bar -f b.res` are indistinguishable from the parsed
+field alone.
+
+The obvious fix — `from: Vec<Vec<String>>` — **does not work**: clap's derive generates a
+`get_many::<Vec<String>>` access that its value parser cannot satisfy, and it panics at runtime with
+`Mismatch between definition and access of 'from'`. This was tried and reverted in wave 2; do not
+try it again.
+
+`extract.rs` therefore regroups by recognising file-shaped tokens (ending `.res`/`.resi`, or
+containing a path separator) as group starts. The one failure case is a dot-path whose final segment
+is literally `res` or `resi` — e.g. `module Foo = { let res = 1 }`, addressed as `Foo.res`. That is
+legal ReScript but vanishingly rare, and it **fails loudly** (`no dot-paths given`) rather than
+silently extracting the wrong thing.
+
+A v2 fix would change the flag shape (one file per `-f`, paths as a separate repeated flag) rather
+than fight the derive macro.
+
 ---
 
 ## 5. Module layout

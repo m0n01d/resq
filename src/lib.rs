@@ -10,6 +10,7 @@
 //!    Note they are *siblings* of the declaration node, not children (SPEC §1 finding 1); use
 //!    [`parser::decl_span_with_attachments`] rather than rediscovering this.
 
+pub mod analysis;
 pub mod cli;
 pub mod extract;
 pub mod parser;
