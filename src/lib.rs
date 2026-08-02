@@ -15,6 +15,7 @@ pub mod cli;
 pub mod edit;
 pub mod extract;
 pub mod grep;
+pub mod imports;
 pub mod parser;
 pub mod project;
 pub mod writer;
