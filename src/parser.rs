@@ -368,17 +368,32 @@ fn let_declaration_parts(node: Node, src: &str) -> (Vec<String>, BinderKind, Opt
 
 /// Every name a pattern binds, in source order, skipping `_` wildcards.
 fn bound_names(pattern: Node, src: &str) -> Vec<String> {
+    bound_name_spans(pattern, src)
+        .into_iter()
+        .filter_map(|(start, end)| src.get(start..end).map(str::to_owned))
+        .collect()
+}
+
+/// Byte spans of every name a pattern binds, in source order, skipping `_` wildcards.
+///
+/// **This is the single implementation of SPEC §1 finding 8** — the `record_pattern`
+/// field-vs-binder disambiguation. It returns spans rather than strings so that callers needing
+/// source positions (`grep --definitions`, and later `refs`/`rename`) share this logic instead of
+/// re-deriving it; [`bound_names`] is a thin text view over the same result. Two copies of this
+/// algorithm drifting apart would make `rename` rewrite record *field names* as if they were
+/// variables — silent file corruption. Do not reimplement it.
+pub fn bound_name_spans(pattern: Node, src: &str) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
-    collect_bound_names(pattern, src, &mut out);
+    collect_bound_name_spans(pattern, src, &mut out);
     out
 }
 
-fn collect_bound_names(node: Node, src: &str, out: &mut Vec<String>) {
+fn collect_bound_name_spans(node: Node, src: &str, out: &mut Vec<(usize, usize)>) {
     if node.kind() == "value_identifier" {
         if let Some(text) = node_text(node, src)
             && text != "_"
         {
-            out.push(text);
+            out.push((node.start_byte(), node.end_byte()));
         }
         return;
     }
@@ -399,10 +414,10 @@ fn collect_bound_names(node: Node, src: &str, out: &mut Vec<String>) {
                         .starts_with(':')
             });
             if renamed {
-                collect_bound_names(children[i + 1], src, out);
+                collect_bound_name_spans(children[i + 1], src, out);
                 i += 2;
             } else {
-                collect_bound_names(child, src, out);
+                collect_bound_name_spans(child, src, out);
                 i += 1;
             }
         }
@@ -411,7 +426,7 @@ fn collect_bound_names(node: Node, src: &str, out: &mut Vec<String>) {
 
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        collect_bound_names(child, src, out);
+        collect_bound_name_spans(child, src, out);
     }
 }
 

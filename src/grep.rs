@@ -482,10 +482,9 @@ fn enclosing_decl(offset: usize, decls: &[DeclRange]) -> Option<&DeclRange> {
 }
 
 /// Byte spans of the name(s) a declaration node binds, for `--definitions`. Dispatches by kind the
-/// same way `parser::declaration_from_node` does; this is a byte-span-producing sibling of that
-/// function's internals (`parser`'s own name collection is private and returns strings, not
-/// spans, so this reimplements the traversal — including the `record_pattern` field-vs-binder
-/// disambiguation from SPEC §1 finding 8 — rather than exposing new surface on the shared spine).
+/// same way `parser::declaration_from_node` does. Pattern binders come from
+/// `parser::bound_name_spans`, the single implementation of the `record_pattern`
+/// field-vs-binder disambiguation (SPEC §1 finding 8) — do not reimplement it here.
 fn collect_name_spans(node: Node, src: &str) -> Vec<(usize, usize)> {
     match node.kind() {
         "let_declaration" => {
@@ -501,7 +500,7 @@ fn collect_name_spans(node: Node, src: &str) -> Vec<(usize, usize)> {
                         continue;
                     }
                     if let Some(pattern) = binding.child(i) {
-                        collect_pattern_name_spans(pattern, src, &mut spans);
+                        spans.extend(parser::bound_name_spans(pattern, src));
                     }
                 }
             }
@@ -535,49 +534,6 @@ fn collect_name_spans(node: Node, src: &str) -> Vec<(usize, usize)> {
             .map(|n| vec![(n.start_byte(), n.end_byte())])
             .unwrap_or_default(),
         _ => Vec::new(),
-    }
-}
-
-/// Every name-span a pattern binds, skipping `_` wildcards. Mirrors `parser::collect_bound_names`
-/// (SPEC §1 finding 8): `record_pattern` is flat and ambiguous — `{x: a}` yields two sibling
-/// `value_identifier`s (the field name `x`, the binder `a`) with no field to distinguish them, so
-/// a child followed by `:` in the source gap is the field name and is skipped in favour of the
-/// next child. Punned `{x}` yields one `value_identifier`, which is bound.
-fn collect_pattern_name_spans(node: Node, src: &str, out: &mut Vec<(usize, usize)>) {
-    if node.kind() == "value_identifier" {
-        if node.utf8_text(src.as_bytes()).is_ok_and(|t| t != "_") {
-            out.push((node.start_byte(), node.end_byte()));
-        }
-        return;
-    }
-
-    if node.kind() == "record_pattern" {
-        let mut cursor = node.walk();
-        let children: Vec<Node> = node.named_children(&mut cursor).collect();
-        let mut i = 0;
-        while i < children.len() {
-            let child = children[i];
-            let renamed = children.get(i + 1).is_some_and(|next| {
-                child.end_byte() <= next.start_byte()
-                    && src[child.end_byte()..next.start_byte()]
-                        .trim_start()
-                        .starts_with(':')
-            });
-            if renamed {
-                collect_pattern_name_spans(children[i + 1], src, out);
-                i += 2;
-            } else {
-                collect_pattern_name_spans(child, src, out);
-                i += 1;
-            }
-        }
-        return;
-    }
-
-    let mut cursor = node.walk();
-    let children: Vec<Node> = node.named_children(&mut cursor).collect();
-    for child in children {
-        collect_pattern_name_spans(child, src, out);
     }
 }
 
