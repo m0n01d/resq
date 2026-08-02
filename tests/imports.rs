@@ -274,6 +274,60 @@ fn rm_open_still_succeeds_when_a_local_binding_is_only_used_within_its_own_funct
     .expect("a local binding used only inside its own function must not trigger a refusal");
 }
 
+/// Regression test for a real, `rescript build`-compiling file (reported after the compiler
+/// itself emitted `Warning number 33: unused open Belt.` on it): `name` and `tone` in
+/// `Greeting.make(~name="ReScript", ~tone=Greeting.Excited)` are argument *labels*, not
+/// references — `~name=` and `~tone=` both carry a `value:` field, so the labels must be skipped
+/// entirely and only the values (a string literal and a qualified `Greeting.Excited`) scanned.
+/// Before the `labeled_argument` field check, the labels were swept up as ordinary
+/// `value_identifier` references and `rm open` refused almost every real ReScript file that calls
+/// a function with a labeled argument — over-approximating to the point of uselessness.
+#[test]
+fn rm_open_succeeds_on_a_real_file_whose_only_unqualified_looking_names_are_argument_labels() {
+    let (_dir, file) = write_temp(
+        "open Belt\n\n/** Entry point for the demo. */\n@genType\nlet main = () => {\n  let msg = Greeting.make(~name=\"ReScript\", ~tone=Greeting.Excited)\n  Console.log(msg)\n}\n",
+        "Main.res",
+    );
+
+    run_rm_open(RmOpen {
+        file: file.clone(),
+        modules: vec!["Belt".to_string()],
+        force: false,
+    })
+    .expect("argument labels `name`/`tone` are call syntax, not references — must not refuse");
+
+    let after = fs::read_to_string(&file).unwrap();
+    assert!(!after.lines().any(|l| l == "open Belt"), "got:\n{after}");
+    assert!(reparses_clean(&after));
+}
+
+/// The mirror image, using the *punned* labeled-argument form (`f(~name)`, sugar for
+/// `f(~name=name)`, no `value:` field): here the label genuinely **is** a reference, and if `name`
+/// is otherwise unbound, `rm open` must still refuse.
+#[test]
+fn rm_open_still_refuses_when_a_punned_labeled_argument_is_genuinely_unbound() {
+    let (_dir, file) = write_temp("open Belt\n\nlet call = f => f(~name)\n", "Punned.res");
+    let before = fs::read_to_string(&file).unwrap();
+
+    let result = run_rm_open(RmOpen {
+        file: file.clone(),
+        modules: vec!["Belt".to_string()],
+        force: false,
+    });
+    assert!(
+        result.is_err(),
+        "a punned label with no binding for `name` is a genuine free reference: {result:?}"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("name"),
+        "error should name the free `name`: {msg}"
+    );
+
+    let after = fs::read_to_string(&file).unwrap();
+    assert_eq!(before, after, "a refused rm open must not touch the file");
+}
+
 // -------------------------------------------------------------------------------------------
 // 5. `rm open --force` removes regardless of the safety scan.
 // -------------------------------------------------------------------------------------------

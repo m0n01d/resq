@@ -49,6 +49,19 @@
 //! the specific direction that matters: where it is cheap or ambiguous, it approximates toward
 //! **free**, never toward **bound**, which is the safe side for a removal-safety check.
 //!
+//! **Labeled arguments are call syntax, not references.** `Greeting.make(~name="x", ~tone=y)`
+//! must not report `name`/`tone` as free identifiers — they are argument labels, unrelated to any
+//! `open`. `labeled_argument` has named fields `label` (always present), `value` (present unless
+//! the argument is punned), and `type`. When `value` is present, `label` is skipped entirely and
+//! only `value` (and `type`, if any) are scanned as real expressions. Only the punned form
+//! (`f(~name)`, no `value:` field, sugar for `f(~name=name)`) treats `label` as the reference it
+//! actually is. This is dispatched on field *presence*, not argument position, so it cannot be
+//! fooled by argument order. Labeled *parameters* (`let f = (~name: string) => name`) are the
+//! binding side of the same syntax and are already handled correctly: `function`'s `parameters`
+//! field is read with [`parser::bound_name_spans`], whose fully generic recursion reaches
+//! `formal_parameters → parameter → labeled_parameter → value_identifier` and binds `name` — no
+//! separate case was needed there.
+//!
 //! **Over-approximates (refuses removals that would actually be fine):**
 //! - It cannot attribute a free identifier to *this specific* open, so a file with one unrelated
 //!   free identifier anywhere blocks removal of *every* open, not just the one that (if any)
@@ -302,7 +315,22 @@ fn remove_spans(src: &str, spans: &[(usize, usize)]) -> String {
         cursor = end;
     }
     out.push_str(&src[cursor..]);
-    out
+    tidy_leading_blank_lines(out)
+}
+
+/// Drop blank lines left at the very top of the file.
+///
+/// Removing an `open` that was the first line leaves the newline that followed it, so the file
+/// would start with a blank line — harmless to the compiler, but it accumulates across repeated
+/// edits and an agent-facing tool should not leave cruft behind. Only *leading* whitespace-only
+/// lines are touched; blank lines elsewhere are the author's and are left alone.
+fn tidy_leading_blank_lines(out: String) -> String {
+    let trimmed = out.trim_start_matches(['\n', '\r']);
+    if trimmed.len() == out.len() {
+        out
+    } else {
+        trimmed.to_string()
+    }
 }
 
 // ============================================================================================
@@ -479,6 +507,27 @@ fn walk_for_refs(
         {
             let (line, col) = parser::byte_offset_to_line_col(src, node.start_byte());
             refs.push((text.to_string(), line, col));
+        }
+        return;
+    }
+    // `Greeting.make(~name="ReScript", ~tone=Greeting.Excited)`: `labeled_argument` has named
+    // fields `label` (required), `value` (optional), `type` (optional). When `value` is present,
+    // `label` is pure call syntax naming which parameter this argument fills — `name` and `tone`
+    // above are NOT references to anything, let alone something that would need `open Belt`, and
+    // must not be swept into the free-identifier scan. Only the punned form (`f(~name)`, no
+    // `value:` field — sugar for `f(~name=name)`) makes the label an actual reference. Checked by
+    // field presence, not position, per the exact grammar shape.
+    if node.kind() == "labeled_argument" {
+        if node.child_by_field_name("value").is_none()
+            && let Some(label) = node.child_by_field_name("label")
+        {
+            walk_for_refs(label, src, stack, refs);
+        }
+        if let Some(value) = node.child_by_field_name("value") {
+            walk_for_refs(value, src, stack, refs);
+        }
+        if let Some(ty) = node.child_by_field_name("type") {
+            walk_for_refs(ty, src, stack, refs);
         }
         return;
     }
