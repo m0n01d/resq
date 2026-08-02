@@ -7,7 +7,14 @@ dispatch time, not retro time.**
 
 ---
 
-## Wave 0 — conductor only (no agents)
+## Wave 0 — conductor only (no agents) — ✅ COMPLETE @ `dd08c2a`
+
+**Outcome: GO.** `tree-sitter 0.26` links cleanly against grammar `v6.0.0` — the foundational risk
+is retired, no version pinning needed. rustc 1.97.1 installed. Build + clippy `-D warnings` + tests
+all green. The empirical grammar probe corrected five things in `SPEC.md` §1 that would each have
+cost an agent significant time; A1's discovery work is therefore already done, and A1 is now
+implementation-only.
+
 
 Rationale: house rule — *"Rebase the conductor branch on latest main; confirm build + tests pass
 (catches harness rot early)."* There is no harness yet, so building one is prerequisite work, and
@@ -52,13 +59,10 @@ Architectural judgment (type design under an unfamiliar grammar) — opus per th
    [elmq's `src/parser.rs`](https://github.com/caseyWebb/elmq/blob/main/src/parser.rs) (675 lines) —
    read it first, the structure carries over directly.
 3. `src/writer.rs` — `atomic_write` + post-edit re-parse validation implementing §2 exactly.
-4. **Empirical grammar findings** written to `SPEC-ADDENDA.md`, because wave 2's prompts cannot be
-   finalized without them:
-   - the actual node kind for **doc comments** (`/** */`) vs ordinary comments — SPEC §1 flags that
-     no `comment` named node appeared in the probe; determine the truth and document it
-   - whether **`%todo`** parses cleanly in this grammar (§3.8); if not, the fallback stub form
-   - how `type_binding` represents variants vs records vs aliases
-   - whether nested `module_binding.definition` is reachable as `block` in all the fixture's cases
+4. ~~Empirical grammar findings~~ — **done by the conductor in wave 0.** All findings are folded
+   into `SPEC.md` §1 (doc-comment node kind, `%todo`, `type_binding` shapes, nested module
+   reachability, `let_declaration` wrapper, decorator sibling placement). A1 implements against §1
+   and does not re-derive it.
 
 **Verification**: `cargo build && cargo clippy -- -D warnings && cargo test`, plus a test asserting
 every fixture file in `tests/fixtures/` parses without ERROR nodes — **including** the polyvar, JSX,
