@@ -38,11 +38,11 @@ fn main() -> anyhow::Result<()> {
         })),
         Command::Refs { .. } => unimplemented!("A7: refs.rs"),
         Command::Set { command } => match command {
-            SetCommand::Decl(_) => unimplemented!("A9: set decl"),
+            SetCommand::Decl(args) => resq::edit::run_set_decl(args),
         },
-        Command::Patch { .. } => unimplemented!("A9: patch"),
+        Command::Patch { file, name, old, new } => resq::edit::run_patch(&file, &name, &old, &new),
         Command::Rm { command } => match command {
-            RmCommand::Decl(_) => unimplemented!("A9: rm decl"),
+            RmCommand::Decl(args) => resq::edit::run_rm_decl(args),
             RmCommand::Open(_) => unimplemented!("A8: rm open"),
         },
         Command::Add { command } => match command {
