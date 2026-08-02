@@ -89,18 +89,9 @@ pub enum Command {
         #[command(subcommand)]
         command: AddCommand,
     },
-    /// Add items to the sibling .resi interface file
-    Expose {
-        file: PathBuf,
-        #[arg(num_args = 1.., required = true)]
-        items: Vec<String>,
-    },
-    /// Remove items from the sibling .resi interface file
-    Unexpose {
-        file: PathBuf,
-        #[arg(num_args = 1.., required = true)]
-        items: Vec<String>,
-    },
+    // NOTE: no `expose`/`unexpose`. See SPEC.md §3.3 — `.resi` is edited with the ordinary
+    // set/rm/patch commands, and the only `.resi`-specific behaviour is the sync guard inside
+    // `rm decl`.
     /// Print the agent integration guide
     Guide,
 }

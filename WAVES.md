@@ -80,13 +80,13 @@ and unicode files (§3.10 round-trip requirement).
 
 ---
 
-## Wave 2 — reads + `.resi` (5 agents, parallel)
+## Wave 2 — reads (4 agents, parallel)
 
 **Dispatch gate:** A1 merged, `SPEC-ADDENDA.md` exists, conductor has re-run the test suite itself.
 **Prompts for this wave are drafted but NOT final** — each must be updated with A1's verified node
 names before dispatch. Dispatching them with guessed node kinds is the predictable failure mode.
 
-File-conflict scan: all five own disjoint modules and disjoint test files. `cli.rs`/`main.rs`/
+File-conflict scan: all four own disjoint modules and disjoint test files. `cli.rs`/`main.rs`/
 `Cargo.toml` are conductor-owned, so the shared-manifest hazard is already neutralized.
 
 | Agent | Module | Command | Model | Notes |
@@ -95,7 +95,10 @@ File-conflict scan: all five own disjoint modules and disjoint test files. `cli.
 | A3 | `extract.rs` | `get` | sonnet | Dot-path resolution; decorators + doc comment must travel (§3.5). |
 | A4 | `project.rs` | *(no command)* | sonnet | `rescript.json`/`bsconfig.json` discovery, `sources`/`namespace`/`suffix`, source walking. Blocks A7. |
 | A5 | `grep.rs` | `grep` | sonnet | Port elmq `src/grep.rs` (29KB). Largely mechanical — regex + enclosing-decl annotation. Exit codes 0/1/2. |
-| A6 | `resi.rs` | `expose`, `unexpose` | opus | §3.3 is subtle: no-op-with-advisory vs hard-error asymmetry, and it must export a `sync_check()` API that A9 consumes. Judgment call → opus. |
+
+**A6 was cut.** `expose`/`unexpose` do not survive the port — SPEC §3.3. The `.resi` sync guard it
+was going to export moved into A9's write path, which also removes wave 3's only cross-agent
+dependency.
 
 ---
 
@@ -107,7 +110,9 @@ File-conflict scan: all five own disjoint modules and disjoint test files. `cli.
 |---|---|---|---|---|
 | A7 | `refs.rs` | `refs` | **opus** | A4 |
 | A8 | `imports.rs` | `add open`, `add alias`, `rm open` | sonnet | A1 |
-| A9 | *(write handlers)* | `set decl`, `patch`, `rm decl` | opus | A1, A6 |
+| A9 | `edit.rs` | `set decl`, `patch`, `rm decl` | opus | A1 |
+
+With A6 cut, these three are fully independent of each other.
 
 **A7 is the hardest task in the project and must be prompted as such.** SPEC §3.2: unlike elmq,
 `refs` gets **no import list to prune candidate files** — ReScript modules are globally visible, so
@@ -115,7 +120,8 @@ every source file is a candidate and per-file `open`/alias scope must be resolve
 agent assume this is a straight port of elmq's `refs.rs`; call the divergence out explicitly in the
 prompt with the §3.2 text inlined.
 
-**A9** must consume A6's `sync_check()` so `rm decl` cannot orphan a `.resi` entry (§3.3).
+**A9** owns the `.resi` sync guard directly (§3.3): `rm decl` must refuse when removal would orphan
+an entry in a sibling `.resi`.
 
 ---
 

@@ -161,26 +161,13 @@ matches found, 1 = none, 2 = error.** By default, matches inside comments and st
 excluded — that's what `--include-comments`/`--include-strings` re-enable, and it requires node-kind
 awareness, not plain regex.
 
-## A6 — `.resi` interface management · `src/resi.rs` · branch `a6-resi` · **opus**
+## ~~A6 — `.resi` interface management~~ — **CUT**
 
-Implement `resq expose` and `resq unexpose`. **Read SPEC §3.3 carefully — the asymmetry is the whole
-task:**
-- `expose` with **no** sibling `.resi` → **no-op + advisory on stderr, exit 0** (everything is
-  already public).
-- `unexpose` with **no** sibling `.resi` → **hard error, exit non-zero**, pointing at
-  `rescript-editor-analysis createInterface`. Do **not** synthesize a `.resi` — signatures require
-  inferred types that tree-sitter cannot produce, and a wrong `.resi` silently changes the module's
-  public API.
-
-Per SPEC §1 finding 5, `.resi` parses with the same nodes as `.res`; an interface item is a
-`let_declaration` whose `let_binding` has a `type_annotation` and **no `body:`**.
-
-Also export the API that A9 consumes:
-```rust
-pub fn sync_check(res_path: &Path, removed: &[String]) -> Result<Vec<String>>
-```
-returning `.resi` entries that would be orphaned by removing `removed` from the `.res`. Keep this
-signature stable — A9 is written against it.
+`expose`/`unexpose` do not survive the port (SPEC §3.3). Elm's exposing list is mandatory syntax;
+ReScript's `.resi` is optional and usually absent, so the commands would be a no-op on most files
+and an error on most files. And since `.resi` parses with the same nodes as `.res` (§1 finding 5),
+the ordinary `set decl` / `rm decl` / `patch` commands already edit it. The one piece worth keeping —
+the sync guard — moved into A9.
 
 ---
 
@@ -223,9 +210,14 @@ passed. Deleting the line as plain text is wrong.
 
 All three obey the write-safety invariant (SPEC §2) via A1's `writer.rs`.
 
-## A9 — single-file writes · branch `a9-writes` · **opus** · depends on A1, A6
+## A9 — single-file writes · `src/edit.rs` · branch `a9-writes` · **opus** · depends on A1
 
-Implement `resq set decl`, `resq patch`, `resq rm decl`. Put handlers in a new `src/edit.rs`.
+Implement `resq set decl`, `resq patch`, `resq rm decl`.
+
+These commands must work on **`.resi` files as well as `.res`** — per SPEC §1 finding 5 the two
+parse with identical nodes, so this should require no special-casing. Prove it: include a test that
+`rm decl tests/fixtures/proj/src/View.resi polyColor` works. That test is the reason resq needs no
+`expose`/`unexpose` commands, so it is load-bearing, not incidental.
 
 - `set decl` — upsert at a dot-path; replace if present, append if new. Content from `--content` or
   stdin (exactly one). If the content parses to a name, it must match `--name`.
@@ -234,8 +226,11 @@ Implement `resq set decl`, `resq patch`, `resq rm decl`. Put handlers in a new `
 - `rm decl` — remove the declaration **plus its decorators and doc comment**, via A1's
   `decl_span_with_attachments`. Getting this wrong orphans a decorator onto the next declaration and
   silently breaks the file — make it a test. Clean up excess blank lines.
-- `rm decl` must call A6's `sync_check()` and refuse (or report) when removal would orphan a `.resi`
-  entry (SPEC §3.3).
+- **The `.resi` sync guard** (SPEC §3.3) — you own this. When removing a declaration from a `.res`
+  that has a sibling `.resi`, check whether the `.resi` still names it. If so, **refuse**, naming the
+  orphaned entries: proceeding would leave a project that does not compile. Fixture case:
+  `rm decl tests/fixtures/proj/src/View.res polyColor` must refuse, because `View.resi` still
+  declares `polyColor`.
 
 Every one of these obeys SPEC §2 in full: refuse broken input, re-parse the output buffer, leave the
 file byte-for-byte unchanged on failure, print `ok` on success. Test each failure mode against

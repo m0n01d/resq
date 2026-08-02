@@ -181,32 +181,36 @@ visible by basename; `Foo.bar` needs no declaration at all. Access is via:
   resolve `open`/alias scopes per-file. This makes `refs.rs` *harder* than elmq's, not easier.
   Budget accordingly.
 
-### 3.3 `exposing (...)` → `.resi` interface files
+### 3.3 `exposing (...)` → `.resi` — **deliberately NOT a command surface**
 
 | Elm | ReScript |
 |---|---|
 | `module Foo exposing (a, b)` | sibling `Foo.resi` listing signatures |
 | `module Foo exposing (..)` | **no `.resi` file at all** (everything public) |
 
-Mapping:
+**Decision: resq has no `expose`/`unexpose` commands.** This is a deliberate divergence from elmq,
+not an omission. Three reasons:
 
-- `resq expose <file> <name>` — if a `.resi` exists, add the item. If **no `.resi` exists**, this is
-  a **no-op with an advisory** (everything is already public). Exactly mirrors elmq's `exposing (..)`
-  no-op.
-- `resq unexpose <file> <name>` — if a `.resi` exists, remove the item. If **no `.resi` exists**,
-  elmq's analogous move is to auto-expand `exposing (..)` into an explicit list. **We cannot do
-  that.** Materializing a `.resi` requires *inferred type signatures*, which tree-sitter does not
-  have and cannot compute.
+1. **Elm's exposing list is mandatory; `.resi` is optional and usually absent.** Every Elm module
+   header carries an exposing list, so elmq's `expose`/`unexpose` sit on the critical path of every
+   file. Most ReScript application modules have no `.resi` at all. Ported literally, the two
+   commands would be a no-op on most files and a hard error on most files.
+2. **`.resi` parses with the same nodes as `.res`** (§1 finding 5), so `set decl`, `patch`, and
+   `rm decl` already operate on a `.resi` file directly. The commands would add no capability —
+   only a wrapper around a construct ReScript doesn't have.
+3. Materializing a missing `.resi` (elmq's `exposing (..)` auto-expansion analog) requires
+   *inferred type signatures*, which tree-sitter cannot compute. Anything we synthesized from syntax
+   alone would silently misstate the module's public API.
 
-  **v1 decision — accepted limitation:** `unexpose` on a file with no `.resi` exits non-zero with an
-  actionable message pointing at the ReScript editor tooling's "Create Interface File"
-  (`rescript-editor-analysis createInterface`). Do **not** attempt to synthesize signatures from
-  syntax alone; a wrong `.resi` silently changes the public API. Revisit in v2 by shelling out to
-  the compiler.
+**What survives is a write-path invariant, not a feature:**
 
-- **Every write command must keep `.res` and `.resi` in sync.** `rm decl` on a file with a `.resi`
-  that still names the removed item produces a project that does not compile. Write commands MUST
-  detect this and either update the `.resi` or refuse. This has no elmq analog — it is new work.
+> **`.resi` sync guard.** If a `.res` file has a sibling `.resi`, any command that removes a
+> declaration MUST check whether the `.resi` still names it. If so the removal would produce a
+> project that does not compile, and the command MUST refuse with a message naming the orphaned
+> entries. This has no elmq analog — it is new work, and it belongs inside the write path.
+
+Editing a `.resi` is done the ordinary way: point `set decl` / `rm decl` / `patch` at the `.resi`
+file. Read commands work on `.resi` too, for free.
 
 ### 3.4 Project config: `elm.json` → `rescript.json` / `bsconfig.json`
 
@@ -306,12 +310,13 @@ Scope decision: **reads + single-file writes.** Project-wide refactors (`mv`, `r
 |---|---|
 | `resq set decl <file> [--name] [--content\|stdin]` | Upsert at a dot-path. |
 | `resq patch <file> <path> --old --new` | Exact match, once, within declaration scope. |
-| `resq rm decl <file> <path>...` | Removes decl + decorators + doc comment. `.resi` sync (§3.3). |
+| `resq rm decl <file> <path>...` | Removes decl + decorators + doc comment. Enforces the `.resi` sync guard (§3.3). |
 | `resq add open <file> <Module>...` | Ordered insert. |
 | `resq add alias <file> <Name>=<Module>` | |
 | `resq rm open <file> <Module>...` | Conservative — see §3.2. |
-| `resq expose <file> <name>...` | `.resi` only; no-op + advisory if absent. |
-| `resq unexpose <file> <name>...` | `.resi` only; **errors** if absent (§3.3). |
+
+There are deliberately no `expose`/`unexpose` commands — see §3.3. `.res` and `.resi` are both
+edited with the commands above.
 
 ---
 
@@ -333,9 +338,9 @@ resq/
     extract.rs            # A3: declaration extraction by dot-path (get)
     project.rs            # A4: rescript.json discovery, source walking, module graph
     grep.rs               # A5: regex search w/ enclosing-decl annotation
-    refs.rs               # A6: reference resolution
-    imports.rs            # A7: open/alias management
-    resi.rs               # A8: .resi expose/unexpose + sync checks
+    refs.rs               # A7: reference resolution
+    imports.rs            # A8: open/alias management
+    edit.rs               # A9: set decl / patch / rm decl, incl. the .resi sync guard (§3.3)
     guide.md              # conductor-owned
   tests/
     fixtures/             # conductor-owned: shared fixture project (see §6)

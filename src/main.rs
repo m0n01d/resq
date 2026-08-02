@@ -20,8 +20,6 @@ fn main() -> anyhow::Result<()> {
             AddCommand::Open(_) => unimplemented!("A8: add open"),
             AddCommand::Alias(_) => unimplemented!("A8: add alias"),
         },
-        Command::Expose { .. } => unimplemented!("A6: resi.rs expose"),
-        Command::Unexpose { .. } => unimplemented!("A6: resi.rs unexpose"),
         Command::Guide => unimplemented!("conductor: guide.md"),
     }
 }
