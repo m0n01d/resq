@@ -1,0 +1,21 @@
+[package]
+name = "resq"
+version = "0.1.0"
+edition = "2024"
+description = "Query and edit ReScript files — like jq for ReScript"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+ignore = "0.4"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tree-sitter = "0.26"
+tree-sitter-rescript = { git = "https://github.com/rescript-lang/tree-sitter-rescript", tag = "v6.0.0" }
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
