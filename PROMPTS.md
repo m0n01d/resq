@@ -127,7 +127,27 @@ file it cannot parse. If you find yourself special-casing any of these, stop.
 
 # WAVE 2 — parallel, 5 agents
 
-**Dispatch gate:** A1 merged; conductor re-ran the acceptance gate itself on the merged diff.
+**Dispatch gate:** ✅ A1 merged at `dc6c752`; conductor re-ran build + clippy + 47 tests on the
+merged result and reproduced all four of A1's grammar findings by hand.
+
+### Wave-2 addenda — every agent in this wave must be told these
+
+1. **`Declaration.path` is the *enclosing module* path, NOT the full address.** It cannot include
+   the declaration's own name, because a destructuring binding has several names and therefore
+   several addresses. `Inner.Deep.helper` is `path = Inner.Deep`, `names = ["helper"]`. Use
+   `Declaration::full_paths()` / `primary_path()` / `is_at()` and `FileSummary::find_declaration`
+   to join them. Do not hand-roll the joining.
+2. **`FileSummary.declarations` is flat and source-ordered**, with nesting carried by `path`; a
+   module's own `Declaration` precedes its members. `list` re-derives indentation from `path.len()`.
+3. **Do NOT run bare `cargo fmt`.** The repo is not rustfmt-clean at the baseline, and `rustfmt`
+   follows `pub mod cli;` — it will silently reformat conductor-owned `src/cli.rs`. Format only
+   your own files (`rustfmt src/yourmodule.rs`) and check `git status` before committing.
+4. **Read SPEC §1 findings 6–9** (multi-binding `let_declaration`, as-patterns, the `record_pattern`
+   ambiguity, bare-identifier module aliases). Finding 8 in particular will silently corrupt
+   `refs`/`rename` if ignored — use `parser::collect_bound_names`, do not re-implement it.
+5. `decl_span_with_attachments` deliberately captures a **decorator across a blank line** but not a
+   doc comment across one. `@genType\n\nlet x = 1` binds the decorator to `x`; orphaning it would
+   break the file. Rely on the helper; do not second-guess it.
 File-conflict scan: all five own disjoint modules and disjoint test files; the shared manifest is
 conductor-owned and already pre-merged.
 

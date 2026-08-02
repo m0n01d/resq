@@ -125,6 +125,29 @@ function            parameters: (formal_parameters …) ← multi-arg / zero-arg
 Also: `let_binding.pattern` is **multiple and required** — destructuring yields several names from
 one binding (§3.7). `module_binding.name` may be a `type_identifier`, not just `module_identifier`.
 
+### Four more findings — added in wave 1, each reproduced by hand
+
+6. **One `let_declaration` can hold several `let_binding` children.** `let rec even = … and odd = …`
+   and `let a = 1 and b = 2` both produce a single `let_declaration` with two `let_binding`s.
+   Iterating only the first binding silently drops declarations.
+
+7. **As-patterns emit a *second* `pattern:` child.** `let (a, b) as whole = pair` gives
+   `pattern: (tuple_pattern …)` **and** `pattern: (as_aliasing (value_identifier))`. Reading only
+   the first `pattern:` loses `whole`.
+
+8. **`record_pattern` is flat and ambiguous — the sharpest trap in the grammar.**
+   `let {x: a} = r` yields `(record_pattern (value_identifier) (value_identifier))` — the field name
+   `x` and the binder `a` are *indistinguishable siblings*, with no field to tell them apart. Only
+   `a` is actually bound. Punned `let {x} = r` yields a single `value_identifier`, which *is* bound.
+   Naively collecting every `value_identifier` under a pattern **over-reports bound names**, which
+   would make `rename` and `refs` rewrite field names as if they were variables. Disambiguate by
+   checking whether the source gap between siblings begins with `:` — `parser::collect_bound_names`
+   already does this; use it rather than re-implementing.
+
+9. **`module_binding.definition` has a third shape**: a bare `module_identifier` for `module A = B`
+   (finding in §1 above lists only `module_identifier_path` for aliases). Use
+   `parser::module_alias_parts`, which handles both.
+
 ---
 
 ## 2. What resq is
