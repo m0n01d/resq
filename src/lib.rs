@@ -12,6 +12,7 @@
 
 pub mod cli;
 pub mod parser;
+pub mod project;
 pub mod writer;
 
 use serde::{Serialize, Serializer};
