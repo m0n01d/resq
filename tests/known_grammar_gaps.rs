@@ -27,6 +27,18 @@ const KNOWN_GAPS: &[(&str, &str)] = &[
         "two trailing comments at end of module block",
         "module M = {\n  let x = 1\n  /* one */\n  /* two */\n}",
     ),
+    // 4-6. Local-open sugar, all three forms. Found in wave 3 by A7 (refs), confirmed by the
+    //      conductor. `Types.(msg + 1)` parses as a call_expression whose value_identifier_path
+    //      leaf is a MISSING "unpack"; the record and array forms produce a bare ERROR holding
+    //      the module_identifier. Ordinary qualified access (`Types.msg`) and the explicit
+    //      block form (`{ open Types; msg }`) both parse fine — it is only the sugar.
+    //
+    //      Frequency check against the 3,181-file corpus: `Module.(…)` appears 0 times in
+    //      packages/ (the stdlib) and 13 times across the whole compiler test suite;
+    //      `Module.{…}` and `Module.[…]` appear 0 times anywhere. Real but rare.
+    ("local open, paren form", "let x = Types.(msg + 1)"),
+    ("local open, record form", "let x = Types.{name: \"x\"}"),
+    ("local open, array form", "let x = Types.[1, 2]"),
 ];
 
 #[test]
@@ -63,6 +75,8 @@ fn gaps_are_narrow() {
             "single trailing comment in module",
             "module M = {\n  let x = 1\n  /* one */\n}",
         ),
+        ("ordinary qualified access", "let x = Types.msg"),
+        ("explicit local open block form", "let x = { open Types; msg }"),
     ];
     let mut p = tree_sitter::Parser::new();
     p.set_language(&tree_sitter_rescript::LANGUAGE.into()).unwrap();

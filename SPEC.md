@@ -39,6 +39,13 @@ Three constructs fail to parse under the pinned grammar. All three are **upstrea
 | `%replace.type` with a bare type payload | `migrate: %replace.type(: Map.t)` | ReScript 12.3 deprecation-migration attribute. 26 files, ~all deprecated `Js_*` shims |
 | Negative bigint literal | `-1n` (`42n` and `-1` both parse) | 1 file |
 | Two+ consecutive trailing comments closing a module block | `{ let x = 1  /* a */  /* b */ }` | 1 file |
+| **Local-open sugar, all three forms** | `Types.(msg + 1)`, `Types.{name: "x"}`, `Types.[1, 2]` | Found in wave 3. 0 occurrences in the stdlib, 13 across the whole compiler test suite — real but rare |
+
+On the local-open forms: ordinary qualified access (`Types.msg`) and the explicit block form
+(`{ open Types; msg }`) both parse fine — only the sugar fails. The paren form yields a
+`value_identifier_path` with a `MISSING "unpack"` leaf; the record and array forms yield a bare
+`ERROR` holding the `module_identifier`. Consequence for `refs`: a module referenced *only* through
+local-open sugar is invisible to it.
 
 **resq handles these correctly by design and needs no workaround.** The write-safety invariant
 (§2) refuses to edit a file that does not parse, so the failure mode is "resq declines to touch

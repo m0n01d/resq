@@ -47,14 +47,15 @@ fn main() -> anyhow::Result<()> {
         Command::Patch { file, name, old, new } => resq::edit::run_patch(&file, &name, &old, &new),
         Command::Rm { command } => match command {
             RmCommand::Decl(args) => resq::edit::run_rm_decl(args),
-            RmCommand::Open(_) => unimplemented!("A8: rm open"),
-            RmCommand::Decl(_) => unimplemented!("A9: rm decl"),
             RmCommand::Open(args) => resq::imports::run_rm_open(args),
         },
         Command::Add { command } => match command {
             AddCommand::Open(args) => resq::imports::run_add_open(args),
             AddCommand::Alias(args) => resq::imports::run_add_alias(args),
         },
-        Command::Guide => unimplemented!("conductor: guide.md"),
+        Command::Guide => {
+            print!("{}", include_str!("guide.md"));
+            Ok(())
+        }
     }
 }
