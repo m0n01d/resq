@@ -26,7 +26,28 @@ report** rather than working around it.
 | External scanner | C, stateful. Handles significant newlines, nested comments, template-string interpolation, paren depth, `list{`/`dict{`, decorators |
 | Named node types | 159 |
 | elmq's tree-sitter version | `0.26`; grammar dev-deps `0.25.2` but links via `tree-sitter-language = "0.1"`, so **0.26 is expected to work** — Agent A1 must confirm this empirically as its first act |
-| Local toolchain | Node 26, npm 11.12.1, clang 17, git 2.50. **No cargo/rustc — `rustup` must be installed first.** |
+| Local toolchain | Node 26, npm 11.12.1, clang 17, git 2.50, rustc 1.97.1 |
+| **Real-world corpus** | Validated against 3,181 `.res`/`.resi` files from `rescript-lang/rescript`. On real library code (`packages/`): **260/288 parse clean**, and 26 of the 28 failures are one construct. Excluding it: **99.3%**. See §0.1. |
+
+### 0.1 Known upstream grammar gaps — do NOT try to fix these in resq
+
+Three constructs fail to parse under the pinned grammar. All three are **upstream bugs in
+`tree-sitter-rescript`**, encoded as inverted tests in `tests/known_grammar_gaps.rs`.
+
+| Construct | Example | Where it shows up |
+|---|---|---|
+| `%replace.type` with a bare type payload | `migrate: %replace.type(: Map.t)` | ReScript 12.3 deprecation-migration attribute. 26 files, ~all deprecated `Js_*` shims |
+| Negative bigint literal | `-1n` (`42n` and `-1` both parse) | 1 file |
+| Two+ consecutive trailing comments closing a module block | `{ let x = 1  /* a */  /* b */ }` | 1 file |
+
+**resq handles these correctly by design and needs no workaround.** The write-safety invariant
+(§2) refuses to edit a file that does not parse, so the failure mode is "resq declines to touch
+this file", never "resq corrupts it". Read commands warn and continue. An agent that tries to
+special-case these in resq is doing the wrong thing.
+
+`%replace.type` is a construct the ReScript team uses to mark stdlib deprecations; it is
+essentially absent from application code, which is why the practical clean rate is far above the
+raw 90%.
 
 Dependency line:
 

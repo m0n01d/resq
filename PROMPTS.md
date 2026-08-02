@@ -110,6 +110,12 @@ ways that must be right the first time (`names: Vec<String>`, and `decorators`).
 `entry`; and a test asserting `validate_output` rejects the contents of
 `tests/fixtures/broken.res`.
 
+**Three constructs do not parse under the pinned grammar** (SPEC §0.1): `%replace.type(: T)`,
+negative bigint `-1n`, and two consecutive trailing comments closing a module block. These are
+upstream grammar bugs, already captured as inverted tests in `tests/known_grammar_gaps.rs`. **Do not
+work around them.** Your write-safety code already handles them correctly — it refuses to edit a
+file it cannot parse. If you find yourself special-casing any of these, stop.
+
 **Ranked hypotheses if the grammar fights you:**
 1. You are matching on `let_binding` where the top-level node is `let_declaration` (SPEC §1). This
    is the most likely failure and it fails *silently* by matching nothing.
