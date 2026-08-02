@@ -5,7 +5,7 @@ use resq::cli::{AddCommand, Cli, Command, RmCommand, SetCommand};
 fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::List { .. } => unimplemented!("A2: analysis.rs"),
-        Command::Get { .. } => unimplemented!("A3: extract.rs"),
+        Command::Get { file, names, from, format } => resq::extract::run(file, names, from, format),
         Command::Grep { .. } => unimplemented!("A5: grep.rs"),
         Command::Refs { .. } => unimplemented!("A7: refs.rs"),
         Command::Set { command } => match command {
