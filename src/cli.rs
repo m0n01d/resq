@@ -8,7 +8,11 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "resq", about = "Query and edit ReScript files — like jq for ReScript")]
+#[command(
+    name = "resq",
+    version,
+    about = "Query and edit ReScript files — like jq for ReScript"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
