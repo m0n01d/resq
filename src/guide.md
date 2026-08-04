@@ -5,6 +5,16 @@ ReScript without loading whole files into context or hand-splicing text.
 
 Targets **ReScript 12**. Requires `rescript.json` (or `bsconfig.json`) for project-wide commands.
 
+## The two rules that carry most of the value
+
+1. **Prefer `resq get <file> <path>` over reading the file.** It returns exactly one declaration —
+   with its decorators and doc comment — in a fraction of the tokens.
+2. **Prefer `resq set decl` / `patch` / `rm decl` over rewriting the file.** Every write is
+   validated and fails closed, so a bad edit costs you nothing: the file is left byte-identical.
+
+When resq refuses, **read the error** — it names the corrective command. Reaching for `--force`
+without reading it is how you break a build.
+
 ## Addressing: dot-paths
 
 Every declaration is addressed by a dot-path relative to the file root:

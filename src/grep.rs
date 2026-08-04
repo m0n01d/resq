@@ -208,11 +208,15 @@ fn emit(out: &mut impl Write, hit: &Hit, args: &GrepArgs) -> Result<()> {
                 .as_ref()
                 .map(|p| p.to_string())
                 .unwrap_or_else(|| "-".to_string());
+            // `file:line:col:decl:text` — the column matters because several matches can land on
+            // one line (`Greeting.make(...Greeting.Excited)`), and without it those rows render
+            // identically and read as duplicates. Mirrors ripgrep's `file:line:col:` prefix.
             writeln!(
                 out,
-                "{}:{}:{}:{}",
+                "{}:{}:{}:{}:{}",
                 hit.file.display(),
                 hit.line,
+                hit.column,
                 decl,
                 hit.line_text
             )?;
