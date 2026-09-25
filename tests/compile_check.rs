@@ -59,6 +59,55 @@ fn write_steps(_project: &Path) -> Vec<(&'static str, Vec<String>)> {
         ("add alias", s(&["add", "alias", "src/Main.res", "Arr=Belt.Array"])),
         ("rm decl (with decorator + doc comment)", s(&["rm", "decl", "src/Main.res", "farewell"])),
         ("rm open", s(&["rm", "open", "src/Main.res", "Belt"])),
+        // --before must place `worldName` TEXTUALLY AHEAD of `shouted` — ReScript resolves plain
+        // `let` bindings in file order, so if --before ever regressed to append-at-end (or to
+        // --after's own placement), the very next step's patch would turn `shouted` into an
+        // "Unbound value worldName" compile error. This step alone must stay green: an unused
+        // top-level binding is not an error (see "set decl (append new)" above, which never calls
+        // `farewell` either).
+        (
+            "set decl (--before, worldName ahead of shouted)",
+            s(&[
+                "set", "decl", "src/Main.res",
+                "--name", "worldName",
+                "--before", "shouted",
+                "--content", "let worldName = \"world\"",
+            ]),
+        ),
+        // Only compiles because the previous step put `worldName` in scope before this line.
+        (
+            "patch (shouted now references worldName)",
+            s(&[
+                "patch", "src/Main.res", "shouted",
+                "--old", "~name=\"world\"",
+                "--new", "~name=worldName",
+            ]),
+        ),
+        // --after must place new content PAST `shouted`'s own line, not splice into the middle of
+        // whatever comment ends up trailing it later — exercised next.
+        (
+            "set decl (--after, new declaration carries its own trailing comment)",
+            s(&[
+                "set", "decl", "src/Main.res",
+                "--name", "scratchNote",
+                "--after", "shouted",
+                "--content", "let scratchNote = 1 // note",
+            ]),
+        ),
+        // `patch` must reach text inside a trailing comment that arrived via --after.
+        (
+            "patch (text inside the trailing comment)",
+            s(&[
+                "patch", "src/Main.res", "scratchNote",
+                "--old", "note",
+                "--new", "scratch marker",
+            ]),
+        ),
+        // `rm decl` must take the trailing comment with it, leaving no orphan behind.
+        (
+            "rm decl (removes scratchNote and its trailing comment)",
+            s(&["rm", "decl", "src/Main.res", "scratchNote"]),
+        ),
     ]
 }
 
