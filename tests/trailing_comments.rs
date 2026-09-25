@@ -7,8 +7,10 @@
 //! Every mutating test works on its own throwaway scratch file (`scratch_file`), never the shared
 //! `tests/fixtures/`.
 
+use resq::cli::RmOpen;
 use resq::edit::{patch, rm_decl, set_decl};
 use resq::extract::extract_group;
+use resq::imports::run_rm_open;
 use resq::parser;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -161,6 +163,30 @@ fn nested_module_trailing_comment_leaves_closing_brace_untouched() {
         after.contains('}'),
         "the module's closing brace must survive:\n{after}"
     );
+    assert_reparses_clean(&file);
+}
+
+// ---------------------------------------------------------------------------------------------
+// `rm open` has the same shape of bug as `rm decl`: `imports.rs::removal_span` used
+// `node.end_byte()` directly rather than `parser::decl_end`, so a trailing `//` comment on the
+// `open`'s own line was left behind as an orphan instead of being removed with it.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn rm_open_leaves_no_orphan_trailing_comment() {
+    let (_dir, file) = scratch_file("Imports.res", "open Belt // for Array\nlet x = 1\n");
+    run_rm_open(RmOpen {
+        file: file.clone(),
+        modules: vec!["Belt".to_string()],
+        force: false,
+    })
+    .expect("rm open should succeed: nothing in this file has an unqualified reference");
+    let after = read(&file);
+    assert!(
+        !after.contains("for Array"),
+        "the open's trailing comment was left as an orphan:\n{after}"
+    );
+    assert_eq!(after, "let x = 1\n");
     assert_reparses_clean(&file);
 }
 

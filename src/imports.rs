@@ -289,9 +289,13 @@ fn find_open_node<'a>(root: Node<'a>, src: &str, module: &str) -> Option<Node<'a
 /// The byte span to delete for a matched `open` node: its declaration span *with* attachments
 /// (SPEC §1 finding 1 — an `open` can carry its own doc comment) through the end of its own line,
 /// consuming exactly one trailing newline so removal never leaves a blank line behind.
+///
+/// `decl_full_span`, not `node.end_byte()` directly: an `open` may carry a trailing `//` (or
+/// non-doc `/* … */`) comment on its own line — `open Belt // for Array` — and `end_byte()` alone
+/// stops right after `Belt`, leaving `// for Array` behind as an orphan (the same shape of bug
+/// trailing-comment handling fixes elsewhere; see `parser::decl_end`).
 fn removal_span(node: Node, src: &str) -> (usize, usize) {
-    let (start, _) = parser::decl_span_with_attachments(node, src);
-    let end = node.end_byte();
+    let (start, end) = parser::decl_full_span(node, src);
     let end = if src.as_bytes().get(end) == Some(&b'\n') {
         end + 1
     } else {
