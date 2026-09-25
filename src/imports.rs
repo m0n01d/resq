@@ -379,7 +379,12 @@ fn insertion_offset(root: Node, src: &str) -> usize {
         let is_alias = parser::declaration_kind(child) == Some(DeclarationKind::Module)
             && parser::module_alias_parts(child, src).is_some();
         if is_open || is_alias {
-            anchor_end = Some(child.end_byte());
+            // `decl_full_span`'s end, not `child.end_byte()`: a trailing same-line comment (e.g.
+            // `open Belt /* start\nend */`) is not part of the node, but it IS part of the line
+            // the next `\n` search must skip past. `end_byte()` alone stops right after `Belt`,
+            // so `skip_to_next_line` would find the `\n` *inside* the block comment and splice
+            // the new `open`/alias there — still-parsing, silently swallowed by the comment.
+            anchor_end = Some(parser::decl_full_span(child, src).1);
         }
     }
 

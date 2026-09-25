@@ -7,10 +7,10 @@
 //! Every mutating test works on its own throwaway scratch file (`scratch_file`), never the shared
 //! `tests/fixtures/`.
 
-use resq::cli::RmOpen;
+use resq::cli::{AddOpen, RmOpen};
 use resq::edit::{patch, rm_decl, set_decl};
 use resq::extract::extract_group;
-use resq::imports::run_rm_open;
+use resq::imports::{run_add_open, run_rm_open};
 use resq::parser;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -188,6 +188,42 @@ fn rm_open_leaves_no_orphan_trailing_comment() {
     );
     assert_eq!(after, "let x = 1\n");
     assert_reparses_clean(&file);
+}
+
+// ---------------------------------------------------------------------------------------------
+// `add open` / `add alias` have the same shape of bug as `rm open`: `imports.rs::insertion_offset`
+// used to search for the next `\n` starting at the anchor's own `end_byte()`, which sits BEFORE a
+// trailing same-line block comment. With `open Belt /* start\nend */`, that search finds the `\n`
+// *inside* the comment (between "start" and "end") and splices the new line there — the file still
+// parses (comments are opaque to the grammar), but the new `open`/alias never takes effect.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn add_open_lands_after_a_trailing_block_comment_not_inside_it() {
+    let (_dir, file) = scratch_file("Imports.res", "open Belt /* start\nend */\n\nlet x = 1\n");
+    run_add_open(AddOpen {
+        file: file.clone(),
+        modules: vec!["Js".to_string()],
+    })
+    .expect("add open should succeed");
+    let after = read(&file);
+    assert!(
+        after.contains("end */\nopen Js"),
+        "the new open must land after the block comment closes, not inside it:\n{after}"
+    );
+    assert!(
+        !after.contains("start\nopen Js"),
+        "the new open must not land inside the block comment:\n{after}"
+    );
+    assert_reparses_clean(&file);
+
+    // The bug's real-world symptom: the new open silently never took effect.
+    let tree = parser::parse(&after).expect("parse");
+    let opens = resq::analysis::extract_summary(&tree, &after, "Imports").opens;
+    assert!(
+        opens.iter().any(|o| o == "Js"),
+        "`open Js` must be a real open, not text trapped inside a comment: {opens:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
