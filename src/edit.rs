@@ -201,6 +201,36 @@ pub fn set_decl_source_at(
         .filter(|l| l.decl.is_at(&target))
         .collect();
 
+    // `()` and `_` bind no name, so ReScript allows any number of `let () = ...` / `let _ = ...`
+    // side-effect bindings at one path — an existing one is never a collision for a NEW binding.
+    let is_anonymous_leaf = leaf == "()" || leaf == "_";
+    if is_anonymous_leaf {
+        if let Some((pos, anchor)) = position {
+            // `--before`/`--after` always add a new binding here, regardless of what already
+            // exists at `target` — there is no "already exists" hazard to refuse for a binder
+            // that binds no name.
+            return insert_relative_to(src, &outline, file, &target, content, pos, anchor);
+        }
+        // No position, and no explicit `--name`: `target` came from the content alone (this
+        // function's upsert-by-content default), so a `hits` match cannot tell which existing
+        // binding the caller means to replace. Refuse and name every one, rather than guess. An
+        // explicit `--name '()'`/`--name '_'` keeps today's replace-in-place behavior, below.
+        if name.is_none() && !hits.is_empty() {
+            let (parent, _) = target
+                .split_leaf()
+                .expect("target path is non-empty, so it splits");
+            let lines: Vec<String> = hits.iter().map(|h| h.decl.start_line.to_string()).collect();
+            let line_word = if hits.len() == 1 { "line" } else { "lines" };
+            bail!(
+                "resq set decl: {} already has `{leaf}` at {line_word} {} in {}; \
+                 pass --name '{leaf}' to replace it, or --before/--after to add another.",
+                module_label(&parent),
+                lines.join(", "),
+                file.display()
+            );
+        }
+    }
+
     match hits.as_slice() {
         [] => match position {
             Some((pos, anchor)) => insert_relative_to(src, &outline, file, &target, content, pos, anchor),
@@ -208,9 +238,8 @@ pub fn set_decl_source_at(
         },
         [hit] => {
             // `--before`/`--after` only ADD a new declaration; an existing target is always
-            // replaced in place, never duplicated. Future work (do not implement here): allow
-            // this when the existing leaf is `()` or `_`, since ReScript allows any number of
-            // `let () = ...` / `let _ = ...` side-effect bindings at one path.
+            // replaced in place, never duplicated. (Anonymous leaves are handled above, before
+            // this match, and never reach this bail.)
             if let Some((_, anchor)) = position {
                 bail!(
                     "resq set decl: `{target}` already exists at line {} in {}; \

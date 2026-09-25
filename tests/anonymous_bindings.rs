@@ -9,7 +9,7 @@
 //! Every mutating test writes to its own `tempfile::TempDir`, never to `tests/fixtures/`.
 
 use resq::analysis::extract_summary;
-use resq::edit::{patch, rm_decl, set_decl};
+use resq::edit::{patch, rm_decl, set_decl, set_decl_at};
 use resq::extract::extract_group;
 use resq::parser::parse;
 use resq::refs::find;
@@ -225,6 +225,126 @@ fn set_decl_replaces_wildcard_binding_by_name() {
     let updated = std::fs::read_to_string(&path).unwrap();
     assert!(updated.contains("after"));
     assert!(!updated.contains("before"));
+}
+
+/// TASK 1c: `--name '()'` with no position, and no existing `()` binding, still appends — the
+/// same as the implicit-name append case below, exercised through the explicit-name path too.
+#[test]
+fn explicit_name_unit_appends_when_none_exists() {
+    let (_dir, path) = scratch_res("let marker = 1\n");
+    set_decl(&path, Some("()"), "let () = Console.log(\"first\")")
+        .expect("explicit --name '()' should append when none exists");
+    let updated = std::fs::read_to_string(&path).unwrap();
+    assert!(updated.contains("marker"));
+    assert!(updated.contains("first"));
+}
+
+// -------------------------------------------------------------------------------------------
+// TASK 1a — `set decl --before`/`--after` on an anonymous leaf always adds a new binding, even
+// when one (or more) already exists. `()` and `_` bind no name, so a second one is not a
+// collision. See `edit.rs::set_decl_source_at`.
+// -------------------------------------------------------------------------------------------
+
+#[test]
+fn before_adds_a_second_unit_binding_when_one_already_exists() {
+    let (_dir, path) = scratch_res("let () = Console.log(\"first\")\nlet marker = 1\n");
+    set_decl_at(&path, Some("()"), "let () = Console.log(\"second\")", Some("marker"), None)
+        .expect("--before on `()` should add, not refuse, when one already exists");
+    let updated = std::fs::read_to_string(&path).unwrap();
+    assert!(updated.contains("first"));
+    assert!(updated.contains("second"));
+    assert_eq!(updated.matches("let () =").count(), 2);
+    let tree = parse(&updated).expect("parses");
+    assert!(!tree.root_node().has_error());
+}
+
+#[test]
+fn after_adds_a_second_wildcard_binding_when_one_already_exists() {
+    let (_dir, path) = scratch_res("let marker = 1\nlet _ = Console.log(\"first\")\n");
+    set_decl_at(&path, Some("_"), "let _ = Console.log(\"second\")", None, Some("marker"))
+        .expect("--after on `_` should add, not refuse, when one already exists");
+    let updated = std::fs::read_to_string(&path).unwrap();
+    assert!(updated.contains("first"));
+    assert!(updated.contains("second"));
+    assert_eq!(updated.matches("let _ =").count(), 2);
+    let tree = parse(&updated).expect("parses");
+    assert!(!tree.root_node().has_error());
+}
+
+/// The always-add rule holds even with no `--name` at all — `--before`/`--after` are checked
+/// before the implicit-name refusal (TASK 1b) ever applies.
+#[test]
+fn before_with_no_name_adds_a_second_unit_binding_when_one_already_exists() {
+    let (_dir, path) = scratch_res("let marker = 1\nlet () = Console.log(\"first\")\n");
+    set_decl_at(&path, None, "let () = Console.log(\"second\")", Some("marker"), None)
+        .expect("--before with implicit name should still add, not refuse");
+    let updated = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(updated.matches("let () =").count(), 2);
+    let tree = parse(&updated).expect("parses");
+    assert!(!tree.root_node().has_error());
+}
+
+// -------------------------------------------------------------------------------------------
+// TASK 1b — `set decl` with no position and no `--name`, targeting an anonymous leaf that
+// already exists: refuse, leave the file byte-identical, and name the fix.
+// -------------------------------------------------------------------------------------------
+
+#[test]
+fn implicit_set_decl_refuses_when_unit_binding_already_exists() {
+    let (_dir, path) = scratch_res("let () = Console.log(\"first\")\n");
+    let before = std::fs::read_to_string(&path).unwrap();
+    let err = set_decl(&path, None, "let () = Console.log(\"second\")")
+        .expect_err("implicit set decl must refuse when `()` already exists");
+    let msg = err.to_string();
+    assert!(msg.contains(path.to_str().unwrap()), "message should name the file: {msg}");
+    assert!(msg.contains("line 1"), "message should name the existing binding's line: {msg}");
+    assert!(msg.contains("--name '()'"), "message should hint --name '()': {msg}");
+    assert!(
+        msg.contains("--before") && msg.contains("--after"),
+        "message should hint --before/--after: {msg}"
+    );
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(after, before, "a refused set decl must leave the file byte-identical");
+}
+
+#[test]
+fn implicit_set_decl_refuses_when_wildcard_binding_already_exists() {
+    let (_dir, path) = scratch_res("let _ = Console.log(\"first\")\n");
+    let before = std::fs::read_to_string(&path).unwrap();
+    let err = set_decl(&path, None, "let _ = Console.log(\"second\")")
+        .expect_err("implicit set decl must refuse when `_` already exists");
+    let msg = err.to_string();
+    assert!(msg.contains(path.to_str().unwrap()), "message should name the file: {msg}");
+    assert!(msg.contains("line 1"), "message should name the existing binding's line: {msg}");
+    assert!(msg.contains("--name '_'"), "message should hint --name '_': {msg}");
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(after, before, "a refused set decl must leave the file byte-identical");
+}
+
+/// Two existing `()` bindings: the refusal names every one of them, not just the first.
+#[test]
+fn implicit_set_decl_refusal_names_every_existing_line() {
+    let (_dir, path) =
+        scratch_res("let () = Console.log(\"first\")\n\nlet () = Console.log(\"second\")\n");
+    let before = std::fs::read_to_string(&path).unwrap();
+    let err = set_decl(&path, None, "let () = Console.log(\"third\")")
+        .expect_err("implicit set decl must refuse when `()` already exists more than once");
+    let msg = err.to_string();
+    assert!(msg.contains("lines 1, 3"), "message should name both existing lines: {msg}");
+    let after = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(after, before, "a refused set decl must leave the file byte-identical");
+}
+
+/// TASK 1b, no-existing-binding case: with no position and no `--name`, and nothing to collide
+/// with, an implicit `set decl` still appends — exactly as it does for a named leaf.
+#[test]
+fn implicit_set_decl_appends_when_no_unit_binding_exists() {
+    let (_dir, path) = scratch_res("let marker = 1\n");
+    set_decl(&path, None, "let () = Console.log(\"first\")")
+        .expect("implicit set decl should append when none exists");
+    let updated = std::fs::read_to_string(&path).unwrap();
+    assert!(updated.contains("marker"));
+    assert!(updated.contains("first"));
 }
 
 // -------------------------------------------------------------------------------------------
