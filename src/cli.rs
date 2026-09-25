@@ -115,6 +115,14 @@ pub struct SetDecl {
     /// Inline content (exactly-one-of with stdin)
     #[arg(long)]
     pub content: Option<String>,
+    /// Insert a new declaration immediately before this dot-path, keeping its decorators and doc
+    /// comment attached to it. Only valid when --name does not already exist in the file.
+    #[arg(long, conflicts_with = "after")]
+    pub before: Option<String>,
+    /// Insert a new declaration immediately after this dot-path (and its trailing comment, if
+    /// any). Only valid when --name does not already exist in the file.
+    #[arg(long, conflicts_with = "before")]
+    pub after: Option<String>,
 }
 
 #[derive(Subcommand)]

@@ -39,10 +39,16 @@ use tree_sitter::Node;
 // CLI entry points (wired from main.rs). Each prints `ok` on success; every error is non-zero.
 // =============================================================================================
 
-/// `resq set decl <FILE> [--name <PATH>] [--content <SRC> | stdin]`.
+/// `resq set decl <FILE> [--name <PATH>] [--content <SRC> | stdin] [--before <PATH> | --after <PATH>]`.
 pub fn run_set_decl(args: SetDecl) -> Result<()> {
     let content = choose_content(args.content, read_stdin_if_piped()?)?;
-    set_decl(&args.file, args.name.as_deref(), &content)?;
+    set_decl_at(
+        &args.file,
+        args.name.as_deref(),
+        &content,
+        args.before.as_deref(),
+        args.after.as_deref(),
+    )?;
     println!("ok");
     Ok(())
 }
@@ -71,8 +77,22 @@ pub fn run_rm_decl(args: RmDecl) -> Result<()> {
 /// declares. When both are present they must agree — a mismatch is an error, never a silent
 /// rename.
 pub fn set_decl(file: &Path, name: Option<&str>, content: &str) -> Result<()> {
+    set_decl_at(file, name, content, None, None)
+}
+
+/// [`set_decl`], with an optional `--before`/`--after` anchor dot-path for placing a **new**
+/// declaration precisely (SPEC: `set decl --before/--after`). At most one of `before`/`after` may
+/// be given; the CLI enforces this with `clap`'s `conflicts_with`, and this function re-checks it
+/// for callers that skip the CLI.
+pub fn set_decl_at(
+    file: &Path,
+    name: Option<&str>,
+    content: &str,
+    before: Option<&str>,
+    after: Option<&str>,
+) -> Result<()> {
     let src = read_source(file)?;
-    let updated = set_decl_source(&src, file, name, content)?;
+    let updated = set_decl_source_at(&src, file, name, content, before, after)?;
     writer::validated_write(file, &updated, "set decl")
 }
 
@@ -118,6 +138,27 @@ pub fn set_decl_source(
     name: Option<&str>,
     content: &str,
 ) -> Result<String> {
+    set_decl_source_at(src, file, name, content, None, None)
+}
+
+/// [`set_decl_source`], with an optional `--before`/`--after` anchor. See [`set_decl_at`].
+pub fn set_decl_source_at(
+    src: &str,
+    file: &Path,
+    name: Option<&str>,
+    content: &str,
+    before: Option<&str>,
+    after: Option<&str>,
+) -> Result<String> {
+    let position = match (before, after) {
+        (Some(_), Some(_)) => {
+            bail!("resq set decl: --before and --after are mutually exclusive")
+        }
+        (Some(p), None) => Some((InsertPosition::Before, p)),
+        (None, Some(p)) => Some((InsertPosition::After, p)),
+        (None, None) => None,
+    };
+
     let tree = parser::ensure_clean_parse(src, file)?;
 
     let content = content.trim_end();
@@ -161,8 +202,24 @@ pub fn set_decl_source(
         .collect();
 
     match hits.as_slice() {
-        [] => append_declaration(src, &outline, file, &target, content),
+        [] => match position {
+            Some((pos, anchor)) => insert_relative_to(src, &outline, file, &target, content, pos, anchor),
+            None => append_declaration(src, &outline, file, &target, content),
+        },
         [hit] => {
+            // `--before`/`--after` only ADD a new declaration; an existing target is always
+            // replaced in place, never duplicated. Future work (do not implement here): allow
+            // this when the existing leaf is `()` or `_`, since ReScript allows any number of
+            // `let () = ...` / `let _ = ...` side-effect bindings at one path.
+            if let Some((_, anchor)) = position {
+                bail!(
+                    "resq set decl: `{target}` already exists at line {} in {}; \
+                     --before/--after only add a NEW declaration — without them, \
+                     `set decl` replaces it in place (anchor was `{anchor}`).",
+                    hit.decl.start_line,
+                    file.display()
+                );
+            }
             // Replacing `let (a, b) = pair` with a binding for only `a` would drop `b` — the same
             // hazard `rm decl` refuses (SPEC §3.7).
             let dropped: Vec<&String> = hit
@@ -561,6 +618,85 @@ fn indent_continuation_lines(content: &str, indent: &str) -> String {
     out
 }
 
+/// Where a new declaration goes relative to an existing one, for `set decl --before`/`--after`.
+enum InsertPosition {
+    Before,
+    After,
+}
+
+/// How a module path reads in an error message: the file root gets a plain-English name rather
+/// than printing as an empty dot-path.
+fn module_label(path: &ModulePath) -> String {
+    if path.is_empty() {
+        "the file root".to_string()
+    } else {
+        format!("module `{path}`")
+    }
+}
+
+/// The `--name` an agent should pass to create `leaf` inside `module` — `leaf` alone at the file
+/// root, `Module.leaf` otherwise. Companion to [`module_label`] for the same error message.
+fn suggested_name(module: &ModulePath, leaf: &str) -> String {
+    if module.is_empty() {
+        leaf.to_string()
+    } else {
+        format!("{module}.{leaf}")
+    }
+}
+
+/// Insert `content` as a **new** declaration immediately before or after the declaration at
+/// `anchor_path`. Only reached when `target` does not already exist (SPEC: `set decl
+/// --before`/`--after`) — the caller has already checked that.
+fn insert_relative_to(
+    src: &str,
+    outline: &Outline,
+    file: &Path,
+    target: &ModulePath,
+    content: &str,
+    position: InsertPosition,
+    anchor_path: &str,
+) -> Result<String> {
+    let anchor = outline.resolve(file, &ModulePath::parse(anchor_path), "set decl")?;
+
+    // The anchor and the target must live in the same module: `--before`/`--after` place a
+    // sibling, they never move the new declaration into a different scope than `--name` asked
+    // for.
+    let (target_parent, leaf) = target
+        .split_leaf()
+        .expect("target path is non-empty, so it splits");
+    if anchor.decl.path != target_parent {
+        bail!(
+            "resq set decl: anchor `{anchor_path}` is in {}, but `{target}` would be created in \
+             {}; pass --name {} to create it alongside the anchor",
+            module_label(&anchor.decl.path),
+            module_label(&target_parent),
+            suggested_name(&anchor.decl.path, leaf),
+        );
+    }
+
+    let (anchor_start, anchor_end) = parser::decl_full_span(anchor.node, src);
+    let indent = line_indent_at(src, anchor_start);
+
+    match position {
+        // Insert right at the anchor's full-span start, so the anchor's own decorators and doc
+        // comment stay attached to *it* rather than ending up above the new declaration.
+        InsertPosition::Before => {
+            let mut inserted = indent_continuation_lines(content, &indent);
+            inserted.push_str("\n\n");
+            inserted.push_str(&indent);
+            Ok(splice(src, anchor_start, anchor_start, &inserted))
+        }
+        // Insert right after the anchor's full-span end, i.e. after its own trailing comment (if
+        // any) rather than splicing into the middle of it.
+        InsertPosition::After => {
+            let mut inserted = String::from("\n\n");
+            inserted.push_str(&indent);
+            inserted.push_str(&indent_continuation_lines(content, &indent));
+            Ok(splice(src, anchor_end, anchor_end, &inserted))
+        }
+    }
+}
+
 /// Append a new declaration under `target`'s parent module, which must exist.
 fn append_declaration(
     src: &str,
@@ -612,8 +748,12 @@ fn append_into_block(src: &str, block: Node, content: &str) -> Result<String> {
     // indentation from that member so the new declaration lines up with its siblings.
     let (insert_at, indent) = match last_member {
         Some(member) => {
-            let (member_start, _) = parser::decl_span_with_attachments(member, src);
-            (member.end_byte(), line_indent_at(src, member_start))
+            // `decl_full_span`, not `member.end_byte()` directly: the last member may end its own
+            // line with a trailing comment (SPEC: trailing comments travel with their
+            // declaration), and inserting before that comment would splice new code between it
+            // and the declaration it belongs to.
+            let (member_start, member_end) = parser::decl_full_span(member, src);
+            (member_end, line_indent_at(src, member_start))
         }
         None => {
             let open = block_text.find('{').map_or(0, |i| i + 1) + block.start_byte();
