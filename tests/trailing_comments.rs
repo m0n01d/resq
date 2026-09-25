@@ -1,0 +1,186 @@
+//! Trailing comments travel with their declaration.
+//!
+//! A declaration owns the comments that follow it on its own last line — `let x = 1 // note`
+//! followed by more declarations must not have `// note` orphaned by `rm decl`, missed by `get`,
+//! or unreachable by `patch`. See `parser::decl_end` / `parser::decl_full_span`.
+//!
+//! Every mutating test works on its own throwaway scratch file (`scratch_file`), never the shared
+//! `tests/fixtures/`.
+
+use resq::edit::{patch, rm_decl, set_decl};
+use resq::extract::extract_group;
+use resq::parser;
+use std::path::{Path, PathBuf};
+use tempfile::TempDir;
+
+fn scratch_file(name: &str, contents: &str) -> (TempDir, PathBuf) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join(name);
+    std::fs::write(&path, contents).expect("write scratch file");
+    (dir, path)
+}
+
+fn read(path: &Path) -> String {
+    std::fs::read_to_string(path).expect("read scratch file")
+}
+
+fn assert_reparses_clean(path: &Path) {
+    let src = read(path);
+    let tree = parser::parse(&src).expect("parse");
+    assert!(
+        !tree.root_node().has_error(),
+        "{} does not re-parse clean:\n{src}",
+        path.display()
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The repro from the brief: `type tab = ScanTab | HaulTab // brain confirmed done; ...`
+// ---------------------------------------------------------------------------------------------
+
+const REPRO: &str = "type tab = ScanTab | HaulTab // brain confirmed done; polling continues until emailedAt\nlet other = 1\n";
+
+#[test]
+fn get_includes_the_trailing_comment() {
+    let (_dir, file) = scratch_file("Tabs.res", REPRO);
+    let results = extract_group(&file, &["tab".to_string()]).expect("get tab");
+    assert_eq!(results.len(), 1);
+    assert!(
+        results[0]
+            .source
+            .contains("// brain confirmed done; polling continues until emailedAt"),
+        "get did not include the trailing comment:\n{}",
+        results[0].source
+    );
+    assert!(!results[0].source.contains("let other"));
+}
+
+#[test]
+fn patch_reaches_text_inside_the_trailing_comment() {
+    let (_dir, file) = scratch_file("Tabs.res", REPRO);
+    patch(
+        &file,
+        "tab",
+        "polling continues",
+        "polling stops",
+    )
+    .expect("patch should find text inside the trailing comment");
+    let after = read(&file);
+    assert!(after.contains("polling stops"));
+    assert!(!after.contains("polling continues"));
+    assert_reparses_clean(&file);
+}
+
+#[test]
+fn rm_decl_leaves_no_orphan_comment() {
+    let (_dir, file) = scratch_file("Tabs.res", REPRO);
+    rm_decl(&file, &["tab".to_string()]).expect("rm decl tab");
+    let after = read(&file);
+    assert!(
+        !after.contains("brain confirmed done"),
+        "trailing comment was left as an orphan:\n{after}"
+    );
+    assert_eq!(after.trim(), "let other = 1");
+    assert_reparses_clean(&file);
+}
+
+#[test]
+fn set_decl_replaces_declaration_and_its_trailing_comment() {
+    let (_dir, file) = scratch_file("Tabs.res", REPRO);
+    set_decl(&file, Some("tab"), "type tab = ScanTab").expect("replace tab");
+    let after = read(&file);
+    assert!(!after.contains("brain confirmed done"));
+    assert!(after.contains("type tab = ScanTab"));
+    assert!(after.contains("let other = 1"));
+    assert_reparses_clean(&file);
+}
+
+// ---------------------------------------------------------------------------------------------
+// A comment on the next line is a different thing — free-standing prose, not attached.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn comment_on_the_next_line_is_not_attached() {
+    let src = "let x = 1\n// next line comment, not attached to x\nlet y = 2\n";
+    let (_dir, file) = scratch_file("Next.res", src);
+    let results = extract_group(&file, &["x".to_string()]).expect("get x");
+    assert_eq!(results[0].source, "let x = 1");
+
+    rm_decl(&file, &["x".to_string()]).expect("rm decl x");
+    let after = read(&file);
+    assert!(
+        after.contains("// next line comment, not attached to x"),
+        "a comment on the next line must survive removal of the earlier declaration:\n{after}"
+    );
+    assert_reparses_clean(&file);
+}
+
+// ---------------------------------------------------------------------------------------------
+// A `/** doc */` immediately after a declaration is the *next* declaration's leading attachment,
+// never the previous one's trailing comment — the two spans must never overlap.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn doc_comment_for_next_decl_is_not_taken_as_trailing() {
+    let src = "let a = 1 /** doc for b */\nlet b = 2\n";
+    let (_dir, file) = scratch_file("DocNext.res", src);
+
+    let a = extract_group(&file, &["a".to_string()]).expect("get a");
+    assert_eq!(a[0].source, "let a = 1");
+    let b = extract_group(&file, &["b".to_string()]).expect("get b");
+    assert!(b[0].source.contains("/** doc for b */"));
+    assert!(b[0].source.contains("let b = 2"));
+
+    rm_decl(&file, &["a".to_string()]).expect("rm decl a");
+    let after = read(&file);
+    assert!(
+        after.contains("/** doc for b */"),
+        "b's doc comment must survive removal of a:\n{after}"
+    );
+    assert!(after.contains("let b = 2"));
+    assert_reparses_clean(&file);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Nested module: the trailing comment travels with the member, and the block's closing `}` is
+// never touched.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn nested_module_trailing_comment_leaves_closing_brace_untouched() {
+    let src = "module M = {\n  let x = 1 // one\n}\n";
+    let (_dir, file) = scratch_file("Nested.res", src);
+
+    let results = extract_group(&file, &["M.x".to_string()]).expect("get M.x");
+    assert!(results[0].source.contains("// one"));
+
+    rm_decl(&file, &["M.x".to_string()]).expect("rm decl M.x");
+    let after = read(&file);
+    assert!(!after.contains("// one"));
+    assert!(
+        after.contains('}'),
+        "the module's closing brace must survive:\n{after}"
+    );
+    assert_reparses_clean(&file);
+}
+
+// ---------------------------------------------------------------------------------------------
+// `/* a */ // b` — both ordinary comments trail the declaration and are taken together.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn block_then_line_comment_both_taken() {
+    let src = "let x = 1 /* a */ // b\nlet y = 2\n";
+    let (_dir, file) = scratch_file("Both.res", src);
+
+    let results = extract_group(&file, &["x".to_string()]).expect("get x");
+    assert!(results[0].source.contains("/* a */"));
+    assert!(results[0].source.contains("// b"));
+
+    rm_decl(&file, &["x".to_string()]).expect("rm decl x");
+    let after = read(&file);
+    assert!(!after.contains("/* a */"));
+    assert!(!after.contains("// b"));
+    assert!(after.contains("let y = 2"));
+    assert_reparses_clean(&file);
+}

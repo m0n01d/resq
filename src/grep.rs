@@ -408,7 +408,8 @@ struct DeclRange {
     /// The canonical dot-path this range answers to (`Declaration::primary_path`).
     primary_path: ModulePath,
     kind: DeclarationKind,
-    /// Byte span including decorators/doc comment (`parser::decl_span_with_attachments`).
+    /// Byte span including decorators/doc comment and a trailing same-line comment
+    /// (`parser::decl_full_span`).
     full_start: usize,
     full_end: usize,
     /// Byte spans of the declaration's own name(s), for `--definitions`.
@@ -426,8 +427,7 @@ fn collect_decl_ranges(node: Node, src: &str, path: &ModulePath, out: &mut Vec<D
         let Some(decl) = parser::declaration_from_node(child, src, path) else {
             continue;
         };
-        let (full_start, _) = parser::decl_span_with_attachments(child, src);
-        let full_end = child.end_byte();
+        let (full_start, full_end) = parser::decl_full_span(child, src);
         let name_spans = collect_name_spans(child, src);
         let primary_path = decl.primary_path();
         let kind = decl.kind;

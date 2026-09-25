@@ -165,7 +165,43 @@ pub fn decl_span_with_attachments(node: Node, src: &str) -> (usize, usize) {
 /// Companion to [`decl_span_with_attachments`] for callers that splice by byte offset.
 pub fn decl_full_span(node: Node, src: &str) -> (usize, usize) {
     let (start, _) = decl_span_with_attachments(node, src);
-    (start, node.end_byte())
+    (start, decl_end(node, src))
+}
+
+/// The end of a declaration **including a trailing comment on its own last line**, as a byte
+/// offset one past the last included byte (matching [`tree_sitter::Node::end_byte`]'s convention).
+///
+/// Mirrors [`decl_span_with_attachments`] on the other side: a decorator/doc comment is the
+/// declaration's *leading* attachment, and a plain comment left on the declaration's own last line
+/// is its *trailing* one. Without this, `let x = 1 // note` followed by more declarations lets
+/// `rm decl x` orphan `// note` onto whatever comes next, and lets `get`/`patch` miss it entirely.
+///
+/// Walks forward over contiguous following siblings, taking a sibling only when **both** hold:
+///
+/// * it is a `line_comment`, or a `block_comment` that is **not** a doc comment
+///   ([`is_doc_comment`]) — a `/** … */` doc comment is always the *next* declaration's leading
+///   attachment (SPEC §1 finding 2), and the two spans must never overlap;
+/// * it starts on the row where the declaration (or the last comment already taken) ends — a
+///   comment on its own following line is free-standing prose, not a trailing note, matching the
+///   "next line comment is not attached" case.
+///
+/// Stops at the first sibling that fails either test — a trailing block comment can itself span
+/// multiple lines, so each step re-checks from that comment's own end row, not the declaration's.
+pub fn decl_end(node: Node, src: &str) -> usize {
+    let mut end = node;
+    let mut end_row = node.end_position().row;
+    let mut cursor = node;
+    while let Some(next) = cursor.next_sibling() {
+        let is_trailing_comment =
+            next.kind() == "line_comment" || (next.kind() == "block_comment" && !is_doc_comment(next, src));
+        if !is_trailing_comment || next.start_position().row != end_row {
+            break;
+        }
+        end = next;
+        end_row = next.end_position().row;
+        cursor = next;
+    }
+    end.end_byte()
 }
 
 /// True when the gap between two adjacent siblings contains an empty line.
@@ -262,7 +298,7 @@ pub fn declaration_from_node(node: Node, src: &str, path: &ModulePath) -> Option
         type_annotation,
         doc_comment,
         start_line,
-        end_line: node.end_position().row + 1,
+        end_line: byte_offset_to_line_col(src, decl_end(node, src)).0,
     })
 }
 
