@@ -136,22 +136,20 @@ fn get_nested_inner_unit() {
 fn two_unit_bindings_are_ambiguous() {
     let (_dir, path) = scratch_res("let () = Console.log(\"first\")\nlet () = Console.log(\"second\")\n");
     let err = extract_group(&path, &["()".to_string()])
-        .err()
-        .expect("get () should refuse as ambiguous");
+        .expect_err("get () should refuse as ambiguous");
     assert!(
         err.to_string().contains("ambiguous"),
         "expected an ambiguity error, got: {err}"
     );
 
-    let err = patch(&path, "()", "first", "First").err().expect("patch should refuse");
+    let err = patch(&path, "()", "first", "First").expect_err("patch should refuse");
     assert!(err.to_string().contains("ambiguous"), "patch: {err}");
 
-    let err = rm_decl(&path, &["()".to_string()]).err().expect("rm decl should refuse");
+    let err = rm_decl(&path, &["()".to_string()]).expect_err("rm decl should refuse");
     assert!(err.to_string().contains("ambiguous"), "rm decl: {err}");
 
     let err = set_decl(&path, Some("()"), "let () = Console.log(\"third\")")
-        .err()
-        .expect("set decl should refuse");
+        .expect_err("set decl should refuse");
     assert!(err.to_string().contains("ambiguous"), "set decl: {err}");
 }
 
