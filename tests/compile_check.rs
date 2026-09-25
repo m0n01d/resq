@@ -108,6 +108,26 @@ fn write_steps(_project: &Path) -> Vec<(&'static str, Vec<String>)> {
             "rm decl (removes scratchNote and its trailing comment)",
             s(&["rm", "decl", "src/Main.res", "scratchNote"]),
         ),
+        // `let () = ...` is a real, addressable declaration (TASK 1's anonymous-binder fix):
+        // --after must place it next to `main` and it must compile as an ordinary top-level
+        // side-effect binding.
+        (
+            "set decl (--after, new anonymous `let () = ...` binding)",
+            s(&[
+                "set", "decl", "src/Main.res",
+                "--after", "main",
+                "--content", "let () = Console.log(\"gate\")",
+            ]),
+        ),
+        // `patch` must resolve the bare `()` path unambiguously to the binding just added.
+        (
+            "patch (the anonymous binding's own literal)",
+            s(&[
+                "patch", "src/Main.res", "()",
+                "--old", "\"gate\"",
+                "--new", "\"gate ok\"",
+            ]),
+        ),
     ]
 }
 
