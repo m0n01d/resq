@@ -986,6 +986,16 @@ fn decl_name_spans(node: Node, src: &str) -> Vec<(String, usize, usize)> {
                     let Some(pattern) = binding.child(i) else {
                         continue;
                     };
+                    // `()` and a bare `_` as the WHOLE pattern are addressable
+                    // (`parser::let_declaration_parts` gives them the literal name `"()"`/`"_"`),
+                    // so their definition site must be registered here too, or a target that
+                    // resolves cleanly would still turn up zero references, not even its own
+                    // definition. `bound_name_spans` alone can't do this — it must keep skipping
+                    // `_` for every other caller, e.g. a switch-arm wildcard is never a reference.
+                    if let Some(name) = parser::anonymous_binder_name(pattern, src) {
+                        out.push((name, pattern.start_byte(), pattern.end_byte()));
+                        continue;
+                    }
                     for (s, e) in parser::bound_name_spans(pattern, src) {
                         if let Some(text) = src.get(s..e) {
                             out.push((text.to_string(), s, e));

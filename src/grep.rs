@@ -504,7 +504,17 @@ fn collect_name_spans(node: Node, src: &str) -> Vec<(usize, usize)> {
                         continue;
                     }
                     if let Some(pattern) = binding.child(i) {
-                        spans.extend(parser::bound_name_spans(pattern, src));
+                        // `()` and a bare `_` as the WHOLE pattern are addressable
+                        // (`parser::let_declaration_parts` gives them the literal name
+                        // `"()"`/`"_"`), so `--definitions` must annotate their span too, the
+                        // same way `refs.rs`'s `decl_name_spans` does. `bound_name_spans` alone
+                        // can't do this — it must keep skipping `_` for every other caller, e.g.
+                        // a switch-arm wildcard is never a definition.
+                        if parser::anonymous_binder_name(pattern, src).is_some() {
+                            spans.push((pattern.start_byte(), pattern.end_byte()));
+                        } else {
+                            spans.extend(parser::bound_name_spans(pattern, src));
+                        }
                     }
                 }
             }

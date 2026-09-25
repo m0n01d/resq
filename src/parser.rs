@@ -392,6 +392,16 @@ fn let_declaration_parts(node: Node, src: &str) -> (Vec<String>, BinderKind, Opt
             let Some(pattern) = binding.child(i) else {
                 continue;
             };
+            if let Some(anonymous) = anonymous_binder_name(pattern, src) {
+                // `()` and a bare `_` as the WHOLE pattern get their literal text as a name, so
+                // `let () = sideEffect()` becomes addressable. `bound_names` would return nothing
+                // here (`unit` has no `value_identifier` child; `_` is deliberately skipped by
+                // `collect_bound_name_spans` for every OTHER caller, e.g. switch-arm wildcards,
+                // which must stay unbound). `binder_kind` stays `Simple`: this is still one name
+                // through one plain binder, not a destructuring.
+                names.push(anonymous);
+                continue;
+            }
             if pattern.kind() != "value_identifier" {
                 binder_kind = BinderKind::Destructuring;
             }
@@ -400,6 +410,33 @@ fn let_declaration_parts(node: Node, src: &str) -> (Vec<String>, BinderKind, Opt
     }
 
     (names, binder_kind, annotation)
+}
+
+/// The literal name `"()"` or `"_"` when `pattern` is, in its entirety, the unit pattern `()` or a
+/// bare wildcard `_` — the two nameless-looking binders resq can still address (gap fix, see
+/// [`let_declaration_parts`]). `None` for every other pattern, including one that merely
+/// *contains* `()` or `_` (`let (a, ()) = pair`, `let (_, _) = pair`): only the whole-pattern case
+/// is addressable, matching [`bound_names`], which already leaves those nested occurrences
+/// unbound.
+///
+/// `pub(crate)` so [`crate::refs`] can register the same definition span for its own,
+/// independent `decl_name_spans` — that function mirrors this one but calls
+/// [`bound_name_spans`] directly, which must keep skipping `_` for every other caller (a
+/// switch-arm wildcard is never a reference). Sharing this helper, rather than a second copy of
+/// the special case, is what keeps the two from drifting apart.
+///
+/// A type annotation does not change this: `let (): unit = …` and `let _: int = …` still hand
+/// this function a bare `unit` / `value_identifier` pattern node, because `type_annotation` is a
+/// sibling of `pattern` on `let_binding`, never a wrapper around it (confirmed against the pinned
+/// grammar's `node-types.json`).
+pub(crate) fn anonymous_binder_name(pattern: Node, src: &str) -> Option<String> {
+    match pattern.kind() {
+        "unit" => Some("()".to_string()),
+        "value_identifier" if node_text(pattern, src).as_deref() == Some("_") => {
+            Some("_".to_string())
+        }
+        _ => None,
+    }
 }
 
 /// Every name a pattern binds, in source order, skipping `_` wildcards.
