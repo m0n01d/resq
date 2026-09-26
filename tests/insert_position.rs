@@ -242,6 +242,52 @@ fn existing_name_plus_after_is_refused_byte_identical() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// `--before`/`--after` only check the `--name` leaf for an existing-name clash — but the content
+// can bind OTHER names too (`let (z, w) = …`, or `let () = … and x = …`), and those were never
+// checked. Left unchecked, the insert silently creates a second binding for a name already in
+// scope, and every existing reference keeps resolving to the OLD one.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn position_refuses_when_content_binds_an_existing_sibling_name() {
+    let (_dir, file) = scratch_file(
+        "Root.res",
+        "let w = \"a\"\nlet a = 1\nlet useW = w ++ \"!\"\n",
+    );
+    let before = read(&file);
+    let err = set_decl_at(&file, Some("z"), "let (z, w) = (1, \"b\")", None, Some("a"))
+        .expect_err("w already exists elsewhere in the module");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("`w` at line 1"),
+        "message must name the clashing name and its line:\n{msg}"
+    );
+    assert_eq!(
+        read(&file),
+        before,
+        "a refused set decl must leave the file byte-identical"
+    );
+}
+
+#[test]
+fn position_refuses_anonymous_binding_when_a_sibling_name_clashes() {
+    let (_dir, file) = scratch_file("Root.res", "let x = 1\nlet a = 2\n");
+    let before = read(&file);
+    let err = set_decl_at(&file, Some("()"), "let () = g() and x = 2", None, Some("a"))
+        .expect_err("x already exists elsewhere in the module");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("`x` at line 1"),
+        "message must name the clashing name and its line:\n{msg}"
+    );
+    assert_eq!(
+        read(&file),
+        before,
+        "a refused set decl must leave the file byte-identical"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
 // `--before` and `--after` together: clap's `conflicts_with` only fires through the real CLI
 // parser, so this one drives the actual binary rather than calling edit.rs functions in-process.
 // ---------------------------------------------------------------------------------------------

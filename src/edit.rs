@@ -208,7 +208,12 @@ pub fn set_decl_source_at(
         if let Some((pos, anchor)) = position {
             // `--before`/`--after` always add a new binding here, regardless of what already
             // exists at `target` — there is no "already exists" hazard to refuse for a binder
-            // that binds no name.
+            // that binds no name. A name the content binds ALONGSIDE the anonymous one
+            // (`let () = g() and x = 2`) is a different story — refuse it below.
+            let (parent, _) = target
+                .split_leaf()
+                .expect("target path is non-empty, so it has a leaf");
+            refuse_position_name_clash(&outline, &parent, &content_names, file)?;
             return insert_relative_to(src, &outline, file, &target, content, pos, anchor);
         }
         // No position, and no explicit `--name`: `target` came from the content alone (this
@@ -233,7 +238,13 @@ pub fn set_decl_source_at(
 
     match hits.as_slice() {
         [] => match position {
-            Some((pos, anchor)) => insert_relative_to(src, &outline, file, &target, content, pos, anchor),
+            Some((pos, anchor)) => {
+                let (parent, _) = target
+                    .split_leaf()
+                    .expect("target path is non-empty, so it has a leaf");
+                refuse_position_name_clash(&outline, &parent, &content_names, file)?;
+                insert_relative_to(src, &outline, file, &target, content, pos, anchor)
+            }
             None => append_declaration(src, &outline, file, &target, content),
         },
         [hit] => {
@@ -671,6 +682,49 @@ fn suggested_name(module: &ModulePath, leaf: &str) -> String {
     } else {
         format!("{module}.{leaf}")
     }
+}
+
+/// When `--before`/`--after` is about to add a **new** declaration, refuse if `content` binds any
+/// name — other than `()`/`_`, which bind nothing — that already exists anywhere in `parent`.
+///
+/// The caller has already established that `target`'s own leaf is free (that is what let it reach
+/// `insert_relative_to` at all), but `content` can bind MORE names than just that leaf
+/// (`let (z, w) = (1, "b")` binds both `z` and `w`), and those other names were never checked.
+/// Without this, `--before`/`--after` can silently create a second binding for a name that is
+/// already in scope — every existing reference keeps resolving to the old one, not the one just
+/// added, which is exactly the silent-rebind hazard `set decl` refuses everywhere else.
+fn refuse_position_name_clash(
+    outline: &Outline,
+    parent: &ModulePath,
+    content_names: &[String],
+    file: &Path,
+) -> Result<()> {
+    let clashes: Vec<(&str, usize)> = content_names
+        .iter()
+        .filter(|n| n.as_str() != "()" && n.as_str() != "_")
+        .filter_map(|n| {
+            let candidate = parent.child(n.clone());
+            outline
+                .decls
+                .iter()
+                .find(|l| l.decl.is_at(&candidate))
+                .map(|hit| (n.as_str(), hit.decl.start_line))
+        })
+        .collect();
+    if clashes.is_empty() {
+        return Ok(());
+    }
+    let detail = clashes
+        .iter()
+        .map(|(n, line)| format!("`{n}` at line {line}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    bail!(
+        "resq set decl: the new content binds {detail}, which already exists in {}; \
+         --before/--after only adds a NEW declaration, and refuses to silently create a \
+         second binding for a name that exists.",
+        file.display()
+    );
 }
 
 /// Insert `content` as a **new** declaration immediately before or after the declaration at
