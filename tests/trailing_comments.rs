@@ -246,3 +246,45 @@ fn block_then_line_comment_both_taken() {
     assert!(after.contains("let y = 2"));
     assert_reparses_clean(&file);
 }
+
+// ---------------------------------------------------------------------------------------------
+// A `;` after the binding is not a comment, but it sits on the declaration's own last row and
+// must be absorbed by `decl_end` the same way a trailing comment is — otherwise `get` leaves the
+// comment out, and `rm decl` leaves `; // note` (or a bare `;`) behind as an orphan.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn get_includes_the_semicolon_and_trailing_comment() {
+    let src = "let x = 1; // note\nlet y = 2\n";
+    let (_dir, file) = scratch_file("Semi.res", src);
+    let results = extract_group(&file, &["x".to_string()]).expect("get x");
+    assert_eq!(results[0].source, "let x = 1; // note");
+}
+
+#[test]
+fn rm_decl_removes_semicolon_and_trailing_comment() {
+    let src = "let x = 1; // note\nlet y = 2\n";
+    let (_dir, file) = scratch_file("Semi.res", src);
+    rm_decl(&file, &["x".to_string()]).expect("rm decl x");
+    let after = read(&file);
+    assert!(
+        !after.contains(';') && !after.contains("note"),
+        "the semicolon and its trailing comment must not be left behind:\n{after}"
+    );
+    assert_eq!(after.trim(), "let y = 2");
+    assert_reparses_clean(&file);
+}
+
+#[test]
+fn rm_decl_removes_bare_semicolon_with_no_comment() {
+    let src = "let x = 1;\nlet y = 2\n";
+    let (_dir, file) = scratch_file("SemiOnly.res", src);
+    rm_decl(&file, &["x".to_string()]).expect("rm decl x");
+    let after = read(&file);
+    assert!(
+        !after.contains(';'),
+        "the bare semicolon must not be left behind:\n{after}"
+    );
+    assert_eq!(after.trim(), "let y = 2");
+    assert_reparses_clean(&file);
+}

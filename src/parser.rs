@@ -188,10 +188,33 @@ pub fn decl_full_span(node: Node, src: &str) -> (usize, usize) {
 /// Stops at the first sibling that fails either test — a trailing block comment can itself span
 /// multiple lines, so each step re-checks from that comment's own end row, not the declaration's.
 pub fn decl_end(node: Node, src: &str) -> usize {
+    decl_end_node(node, src).end_byte()
+}
+
+/// The terminal node of a declaration's span — `node` itself, or the last trailing `;` / comment
+/// absorbed by the rule documented on [`decl_end`].
+///
+/// Exposed separately (not just as the byte offset [`decl_end`] returns) so a caller that also
+/// needs the end **row** — [`declaration_from_node`]'s `end_line` — can read it straight off this
+/// node's `end_position()`. Re-deriving the row from the byte offset via
+/// [`byte_offset_to_line_col`] scans `src` from byte 0 on every call, which made building the
+/// declaration list for a whole file quadratic in its length.
+fn decl_end_node<'a>(node: Node<'a>, src: &str) -> Node<'a> {
     let mut end = node;
     let mut end_row = node.end_position().row;
     let mut cursor = node;
     while let Some(next) = cursor.next_sibling() {
+        // A bare `;` after the binding (`let x = 1;`) is not a comment, but it sits on the same
+        // row as the declaration and must be absorbed the same way a trailing comment is —
+        // otherwise it (and any comment following it) is left behind by `rm decl` / missed by
+        // `get`. Check this before the comment test below so a comment after the `;` is still
+        // walked into on the next loop iteration.
+        if next.kind() == ";" && next.start_position().row == end_row {
+            end = next;
+            end_row = next.end_position().row;
+            cursor = next;
+            continue;
+        }
         let is_trailing_comment =
             next.kind() == "line_comment" || (next.kind() == "block_comment" && !is_doc_comment(next, src));
         if !is_trailing_comment || next.start_position().row != end_row {
@@ -201,7 +224,7 @@ pub fn decl_end(node: Node, src: &str) -> usize {
         end_row = next.end_position().row;
         cursor = next;
     }
-    end.end_byte()
+    end
 }
 
 /// True when the gap between two adjacent siblings contains an empty line.
@@ -298,7 +321,7 @@ pub fn declaration_from_node(node: Node, src: &str, path: &ModulePath) -> Option
         type_annotation,
         doc_comment,
         start_line,
-        end_line: byte_offset_to_line_col(src, decl_end(node, src)).0,
+        end_line: decl_end_node(node, src).end_position().row + 1,
     })
 }
 
