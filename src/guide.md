@@ -82,6 +82,9 @@ A comment on the next line belongs to no declaration. A `/** doc */` comment rig
 declaration, even on the same line, belongs to the next declaration. It never belongs to the one
 before it.
 
+A `;` right after a declaration, on the same line, belongs to the declaration too. Any comment
+after that `;`, on the same line, still belongs to the declaration.
+
 ## `set decl --before` / `--after`: insert next to an anchor
 
 By default, `set decl` adds a new declaration at the end of its module. Pass `--before <path>` or
@@ -98,8 +101,10 @@ This adds `helper` right before `main`. The anchor must be in the same module as
 `--before` keeps the anchor's own decorators and doc comment attached to the anchor. `--after`
 keeps the anchor's own trailing comment attached to the anchor, and inserts past it.
 
-When `--name` already exists in the file, both flags refuse. Plain `set decl` without them
-replaces an existing declaration in place, so `--before` and `--after` only add a new one.
+When `--name` already exists in the file, both flags refuse. This check looks at every name the
+new content binds, not only `--name` itself. `()` and `_` bind no name, so they are exempt. Plain
+`set decl` without them replaces an existing declaration in place, so `--before` and `--after`
+only add a new one.
 
 ## Things that will surprise you
 

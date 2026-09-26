@@ -48,6 +48,8 @@ resq guide          # prints the full agent-facing reference to stdout
   a guess.
 - **Decorators and doc comments are part of the declaration.** `get` returns them and `rm decl`
   removes them. A `get` that dropped `@react.component` would hand you code that doesn't compile.
+- **A trailing `;` and comment stay with the declaration.** A `;` right after a declaration, on
+  the same line, belongs to it. Any comment after that `;` belongs to it too.
 - **There is no `expose`/`unexpose`.** `.resi` interface files parse with the same grammar as
   `.res`, so edit them with the ordinary commands — point `set decl` / `rm decl` / `patch` at the
   `.resi` directly.
@@ -255,7 +257,9 @@ let main = () => {
 
 `helper` lands right before `main`, and the doc comment and `@genType` for `main` stay attached to
 `main`. The anchor must be in the same module as the new name. When `--name` already exists in the
-file, both flags refuse. Plain `set decl` already replaces an existing declaration in place.
+file, both flags refuse. This check looks at every name the new content binds, not only `--name`
+itself. `()` and `_` bind no name, so they are exempt. Plain `set decl` already replaces an
+existing declaration in place.
 
 ### Write safety
 
