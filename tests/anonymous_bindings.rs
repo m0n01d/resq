@@ -249,9 +249,11 @@ fn before_adds_a_second_unit_binding_when_one_already_exists() {
     set_decl_at(&path, Some("()"), "let () = Console.log(\"second\")", Some("marker"), None)
         .expect("--before on `()` should add, not refuse, when one already exists");
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(updated.contains("first"));
-    assert!(updated.contains("second"));
-    assert_eq!(updated.matches("let () =").count(), 2);
+    assert_eq!(
+        updated,
+        "let () = Console.log(\"first\")\nlet () = Console.log(\"second\")\n\nlet marker = 1\n",
+        "the new binding must land directly before marker, and `first` must survive untouched"
+    );
     let tree = parse(&updated).expect("parses");
     assert!(!tree.root_node().has_error());
 }
@@ -262,9 +264,11 @@ fn after_adds_a_second_wildcard_binding_when_one_already_exists() {
     set_decl_at(&path, Some("_"), "let _ = Console.log(\"second\")", None, Some("marker"))
         .expect("--after on `_` should add, not refuse, when one already exists");
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert!(updated.contains("first"));
-    assert!(updated.contains("second"));
-    assert_eq!(updated.matches("let _ =").count(), 2);
+    assert_eq!(
+        updated,
+        "let marker = 1\n\nlet _ = Console.log(\"second\")\nlet _ = Console.log(\"first\")\n",
+        "the new binding must land directly after marker, and `first` must survive untouched"
+    );
     let tree = parse(&updated).expect("parses");
     assert!(!tree.root_node().has_error());
 }
@@ -277,7 +281,11 @@ fn before_with_no_name_adds_a_second_unit_binding_when_one_already_exists() {
     set_decl_at(&path, None, "let () = Console.log(\"second\")", Some("marker"), None)
         .expect("--before with implicit name should still add, not refuse");
     let updated = std::fs::read_to_string(&path).unwrap();
-    assert_eq!(updated.matches("let () =").count(), 2);
+    assert_eq!(
+        updated,
+        "let () = Console.log(\"second\")\n\nlet marker = 1\nlet () = Console.log(\"first\")\n",
+        "the new binding must land directly before marker, and `first` must survive untouched"
+    );
     let tree = parse(&updated).expect("parses");
     assert!(!tree.root_node().has_error());
 }
