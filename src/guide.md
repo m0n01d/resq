@@ -57,6 +57,11 @@ resq add alias src/Main.res Arr=Belt.Array
 resq rm open src/Main.res Belt
 ```
 
+`set decl` takes the declaration from `--content`. If you omit `--content`, `set decl` reads the
+declaration from stdin. `--content` wins: if you give it, `set decl` does not read stdin. A stdin
+pipe that stays open then cannot make the command wait. Some agent tools run each command with
+such a pipe.
+
 Every write command:
 1. refuses a file that already has parse errors,
 2. re-parses the buffer it built and refuses if the result would not parse,

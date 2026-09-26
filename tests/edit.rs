@@ -14,10 +14,14 @@
 //! 6. `set decl` with invalid `--content` aborts, leaving the file byte-identical.
 //! 7. `patch` errors on two matches and on zero matches, and succeeds on exactly one.
 //! 8. Every write command refuses `tests/fixtures/broken.res`, writing zero bytes.
+//! 9. `set decl --content` never reads stdin, so a stdin pipe that stays open cannot hang it.
 
 use resq::edit::{check_resi_sync, choose_content, patch, rm_decl, set_decl};
 use resq::{ModulePath, parser};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 const FIXTURES: &str = "tests/fixtures";
@@ -489,21 +493,21 @@ fn set_decl_rejects_empty_and_multi_declaration_content() {
     assert_eq!(read(&main), before);
 }
 
-/// `--content` and stdin are exactly-one-of.
+/// `--content` wins, and stdin is then not read at all. Without the flag, stdin is the source.
 #[test]
-fn choose_content_requires_exactly_one_source() {
+fn choose_content_takes_the_flag_and_reads_stdin_only_without_it() {
     assert_eq!(
-        choose_content(Some("let a = 1".into()), None).expect("flag only"),
+        choose_content(Some("let a = 1".into()), || {
+            panic!("stdin must not be read when --content is given")
+        })
+        .expect("flag only"),
         "let a = 1"
     );
     assert_eq!(
-        choose_content(None, Some("let a = 1".into())).expect("stdin only"),
+        choose_content(None, || Ok(Some("let a = 1".into()))).expect("stdin only"),
         "let a = 1"
     );
-    let both = choose_content(Some("let a = 1".into()), Some("let b = 2".into()))
-        .expect_err("both is an error");
-    assert!(both.to_string().contains("exactly one"), "{both}");
-    let neither = choose_content(None, None).expect_err("neither is an error");
+    let neither = choose_content(None, || Ok(None)).expect_err("neither is an error");
     assert!(neither.to_string().contains("--content"), "{neither}");
 }
 
@@ -699,5 +703,86 @@ fn rm_decl_of_a_lone_module_member_leaves_a_tidy_block() {
     );
     rm_decl(&file, &paths(&["Inner.only"])).expect("rm decl Inner.only");
     assert_eq!(read(&file), "module Inner = {\n}\n\nlet after = 2\n");
+    assert_reparses_clean(&file);
+}
+
+// ---------------------------------------------------------------------------------------------
+// 9. `set decl --content` never reads stdin, so a stdin pipe that stays open cannot hang it.
+// ---------------------------------------------------------------------------------------------
+
+/// A clean `set decl` run takes milliseconds. A run still going after this long is blocked, most
+/// likely on a stdin read that waits for an end of file that never comes.
+const HANG_LIMIT: Duration = Duration::from_secs(10);
+
+/// Run `resq set decl <file> <args>` through the built binary with all three streams piped, so
+/// the test decides when (or whether) stdin reaches end of file.
+fn spawn_set_decl(file: &Path, args: &[&str]) -> Child {
+    Command::new(env!("CARGO_BIN_EXE_resq"))
+        .args(["set", "decl", file.to_str().unwrap()])
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to run resq")
+}
+
+/// Wait for `child` to exit, polling so the wait has a time limit. Past [`HANG_LIMIT`], kill it
+/// and fail the test rather than hang the suite.
+fn wait_or_fail_on_hang(child: &mut Child) -> ExitStatus {
+    let deadline = Instant::now() + HANG_LIMIT;
+    loop {
+        if let Some(status) = child.try_wait().expect("poll resq") {
+            return status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("resq did not exit within {HANG_LIMIT:?}; it is blocked, most likely on stdin");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Everything the child wrote to one of its piped streams. Call it after the child exits.
+fn drain(stream: Option<impl Read>) -> String {
+    let mut text = String::new();
+    stream
+        .expect("stream is piped")
+        .read_to_string(&mut text)
+        .expect("read resq output");
+    text
+}
+
+#[test]
+fn set_decl_with_content_does_not_wait_on_an_open_stdin_pipe() {
+    let (_dir, file) = scratch_file("Main.res", "let a = 1\n");
+    let mut child = spawn_set_decl(&file, &["--name", "x", "--content", "let x = 1"]);
+    // Hold the write end open and write nothing, as an agent harness does. `Child::wait` would
+    // close it, so take it out of `child` and drop it only after resq exits.
+    let open_stdin = child.stdin.take().expect("stdin is piped");
+    let status = wait_or_fail_on_hang(&mut child);
+    drop(open_stdin);
+    let stderr = drain(child.stderr.take());
+    assert!(status.success(), "{status}: {stderr}");
+    assert_eq!(drain(child.stdout.take()).trim(), "ok");
+    assert!(read(&file).contains("let x = 1"), "{}", read(&file));
+    assert_reparses_clean(&file);
+}
+
+#[test]
+fn set_decl_without_content_still_reads_the_declaration_from_stdin() {
+    let (_dir, file) = scratch_file("Main.res", "let a = 1\n");
+    let mut child = spawn_set_decl(&file, &["--name", "x"]);
+    let mut stdin = child.stdin.take().expect("stdin is piped");
+    stdin
+        .write_all(b"let x = 2\n")
+        .expect("write the declaration to stdin");
+    drop(stdin); // end of file: resq now has the whole declaration
+    let status = wait_or_fail_on_hang(&mut child);
+    let stderr = drain(child.stderr.take());
+    assert!(status.success(), "{status}: {stderr}");
+    assert_eq!(drain(child.stdout.take()).trim(), "ok");
+    assert!(read(&file).contains("let x = 2"), "{}", read(&file));
     assert_reparses_clean(&file);
 }
