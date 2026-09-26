@@ -35,29 +35,47 @@ fn write_steps(_project: &Path) -> Vec<(&'static str, Vec<String>)> {
         (
             "set decl (append new)",
             s(&[
-                "set", "decl", "src/Main.res",
-                "--name", "farewell",
-                "--content", "let farewell = (~name: string) => \"Bye, \" ++ name",
+                "set",
+                "decl",
+                "src/Main.res",
+                "--name",
+                "farewell",
+                "--content",
+                "let farewell = (~name: string) => \"Bye, \" ++ name",
             ]),
         ),
         (
             "patch (edit a literal)",
             s(&[
-                "patch", "src/Main.res", "farewell",
-                "--old", "\"Bye, \"",
-                "--new", "\"Farewell, \"",
+                "patch",
+                "src/Main.res",
+                "farewell",
+                "--old",
+                "\"Bye, \"",
+                "--new",
+                "\"Farewell, \"",
             ]),
         ),
         (
             "set decl (replace existing)",
             s(&[
-                "set", "decl", "src/Main.res",
-                "--name", "farewell",
-                "--content", "let farewell = (~name: string) => \"So long, \" ++ name",
+                "set",
+                "decl",
+                "src/Main.res",
+                "--name",
+                "farewell",
+                "--content",
+                "let farewell = (~name: string) => \"So long, \" ++ name",
             ]),
         ),
-        ("add alias", s(&["add", "alias", "src/Main.res", "Arr=Belt.Array"])),
-        ("rm decl (with decorator + doc comment)", s(&["rm", "decl", "src/Main.res", "farewell"])),
+        (
+            "add alias",
+            s(&["add", "alias", "src/Main.res", "Arr=Belt.Array"]),
+        ),
+        (
+            "rm decl (with decorator + doc comment)",
+            s(&["rm", "decl", "src/Main.res", "farewell"]),
+        ),
         ("rm open", s(&["rm", "open", "src/Main.res", "Belt"])),
         // --before must place `worldName` TEXTUALLY AHEAD of `shouted` — ReScript resolves plain
         // `let` bindings in file order, so if --before ever regressed to append-at-end (or to
@@ -68,19 +86,28 @@ fn write_steps(_project: &Path) -> Vec<(&'static str, Vec<String>)> {
         (
             "set decl (--before, worldName ahead of shouted)",
             s(&[
-                "set", "decl", "src/Main.res",
-                "--name", "worldName",
-                "--before", "shouted",
-                "--content", "let worldName = \"world\"",
+                "set",
+                "decl",
+                "src/Main.res",
+                "--name",
+                "worldName",
+                "--before",
+                "shouted",
+                "--content",
+                "let worldName = \"world\"",
             ]),
         ),
         // Only compiles because the previous step put `worldName` in scope before this line.
         (
             "patch (shouted now references worldName)",
             s(&[
-                "patch", "src/Main.res", "shouted",
-                "--old", "~name=\"world\"",
-                "--new", "~name=worldName",
+                "patch",
+                "src/Main.res",
+                "shouted",
+                "--old",
+                "~name=\"world\"",
+                "--new",
+                "~name=worldName",
             ]),
         ),
         // --after must place new content PAST `shouted`'s own line, not splice into the middle of
@@ -88,19 +115,28 @@ fn write_steps(_project: &Path) -> Vec<(&'static str, Vec<String>)> {
         (
             "set decl (--after, new declaration carries its own trailing comment)",
             s(&[
-                "set", "decl", "src/Main.res",
-                "--name", "scratchNote",
-                "--after", "shouted",
-                "--content", "let scratchNote = 1 // note",
+                "set",
+                "decl",
+                "src/Main.res",
+                "--name",
+                "scratchNote",
+                "--after",
+                "shouted",
+                "--content",
+                "let scratchNote = 1 // note",
             ]),
         ),
         // `patch` must reach text inside a trailing comment that arrived via --after.
         (
             "patch (text inside the trailing comment)",
             s(&[
-                "patch", "src/Main.res", "scratchNote",
-                "--old", "note",
-                "--new", "scratch marker",
+                "patch",
+                "src/Main.res",
+                "scratchNote",
+                "--old",
+                "note",
+                "--new",
+                "scratch marker",
             ]),
         ),
         // A comment cannot break compilation, so this step cannot catch a regression in comment
@@ -116,18 +152,26 @@ fn write_steps(_project: &Path) -> Vec<(&'static str, Vec<String>)> {
         (
             "set decl (--after, new anonymous `let () = ...` binding)",
             s(&[
-                "set", "decl", "src/Main.res",
-                "--after", "main",
-                "--content", "let () = Console.log(\"gate\")",
+                "set",
+                "decl",
+                "src/Main.res",
+                "--after",
+                "main",
+                "--content",
+                "let () = Console.log(\"gate\")",
             ]),
         ),
         // `patch` must resolve the bare `()` path unambiguously to the binding just added.
         (
             "patch (the anonymous binding's own literal)",
             s(&[
-                "patch", "src/Main.res", "()",
-                "--old", "\"gate\"",
-                "--new", "\"gate ok\"",
+                "patch",
+                "src/Main.res",
+                "()",
+                "--old",
+                "\"gate\"",
+                "--new",
+                "\"gate ok\"",
             ]),
         ),
     ]
@@ -198,7 +242,9 @@ fn compile_gate_actually_detects_breakage() {
         eprintln!("SKIP compile_gate_actually_detects_breakage: no fixture project");
         return;
     };
-    if !fixture.join("node_modules").exists() || Command::new("npx").arg("--version").output().is_err() {
+    if !fixture.join("node_modules").exists()
+        || Command::new("npx").arg("--version").output().is_err()
+    {
         eprintln!("SKIP compile_gate_actually_detects_breakage: toolchain unavailable");
         return;
     }
@@ -206,10 +252,17 @@ fn compile_gate_actually_detects_breakage() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = temp.path().join("proj");
     copy_project(&fixture, &project);
-    assert!(rescript_build(&project).ok, "fixture should compile before we break it");
+    assert!(
+        rescript_build(&project).ok,
+        "fixture should compile before we break it"
+    );
 
     // Type error, not a syntax error — this is precisely the class `validate_output` cannot see.
-    std::fs::write(project.join("src/Wrong.res"), "let bad: int = \"not an int\"\n").unwrap();
+    std::fs::write(
+        project.join("src/Wrong.res"),
+        "let bad: int = \"not an int\"\n",
+    )
+    .unwrap();
 
     assert!(
         !rescript_build(&project).ok,
@@ -241,7 +294,9 @@ fn rescript_build(project: &Path) -> BuildResult {
 fn locate_fixture() -> Option<PathBuf> {
     let path = match std::env::var("RESQ_COMPILE_FIXTURE") {
         Ok(p) => PathBuf::from(p),
-        Err(_) => Path::new(env!("CARGO_MANIFEST_DIR")).parent()?.join("rescript-hello"),
+        Err(_) => Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()?
+            .join("rescript-hello"),
     };
     path.join("rescript.json").exists().then_some(path)
 }

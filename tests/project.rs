@@ -32,7 +32,9 @@ fn discover_from_directory_path_finds_project_root() {
 #[test]
 fn source_walking_finds_all_fixture_files() {
     let project = Project::discover(Path::new(NESTED_UTIL)).unwrap();
-    let files = project.source_files().expect("walking sources should succeed");
+    let files = project
+        .source_files()
+        .expect("walking sources should succeed");
 
     let names: Vec<String> = files
         .iter()
@@ -52,7 +54,11 @@ fn source_walking_finds_all_fixture_files() {
             "expected {expected} in walked files, got {names:?}"
         );
     }
-    assert_eq!(files.len(), 6, "expected exactly 6 fixture source files, got {names:?}");
+    assert_eq!(
+        files.len(),
+        6,
+        "expected exactly 6 fixture source files, got {names:?}"
+    );
 
     // The nested file must actually be found *under* nested/, not just by basename.
     assert!(
@@ -128,8 +134,7 @@ fn parses_namespace_variants() {
         .unwrap();
     assert_eq!(auto.namespace, Namespace::Named("MyApp".to_string()));
 
-    let named =
-        ProjectConfig::parse(r#"{ "sources": "src", "namespace": "CustomNs" }"#).unwrap();
+    let named = ProjectConfig::parse(r#"{ "sources": "src", "namespace": "CustomNs" }"#).unwrap();
     assert_eq!(named.namespace, Namespace::Named("CustomNs".to_string()));
 
     let none = ProjectConfig::parse(r#"{ "sources": "src" }"#).unwrap();
@@ -143,8 +148,7 @@ fn parses_namespace_variants() {
 /// `suffix` is carried through verbatim.
 #[test]
 fn parses_suffix() {
-    let config =
-        ProjectConfig::parse(r#"{ "sources": "src", "suffix": ".res.mjs" }"#).unwrap();
+    let config = ProjectConfig::parse(r#"{ "sources": "src", "suffix": ".res.mjs" }"#).unwrap();
     assert_eq!(config.suffix.as_deref(), Some(".res.mjs"));
 
     let default = ProjectConfig::parse(r#"{ "sources": "src" }"#).unwrap();
@@ -206,11 +210,7 @@ fn missing_config_returns_clear_error() {
 fn prefers_rescript_json_over_bsconfig_json() {
     let tmp = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(tmp.path()).unwrap();
-    std::fs::write(
-        root.join("rescript.json"),
-        r#"{ "sources": "modern-src" }"#,
-    )
-    .unwrap();
+    std::fs::write(root.join("rescript.json"), r#"{ "sources": "modern-src" }"#).unwrap();
     std::fs::write(root.join("bsconfig.json"), r#"{ "sources": "old-src" }"#).unwrap();
 
     let project = Project::discover(&root).expect("should discover the project");

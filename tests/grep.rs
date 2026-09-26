@@ -111,7 +111,10 @@ fn unicode_string_match_is_excluded_by_default_and_utf8_safe_with_the_flag() {
     // Main.res: `let unicodeString = "héllo — wörld ✓ 日本語"`. "wörld" sits after several
     // multi-byte characters on the line — the classic byte-vs-char column bug.
     let hits = search(&args("wörld")).unwrap();
-    assert!(hits.is_empty(), "a string-literal match must be excluded by default");
+    assert!(
+        hits.is_empty(),
+        "a string-literal match must be excluded by default"
+    );
 
     let mut with_flag = args("wörld");
     with_flag.include_strings = true;
@@ -187,7 +190,11 @@ fn fixed_flag_does_not_treat_dot_as_a_wildcard() {
         format: Format::Compact,
     };
     let hits = search(&fixed).unwrap();
-    assert_eq!(hits.len(), 1, "fixed `a.b` must match only the literal text, not `axb`");
+    assert_eq!(
+        hits.len(),
+        1,
+        "fixed `a.b` must match only the literal text, not `axb`"
+    );
 
     fixed.fixed = false;
     let hits = search(&fixed).unwrap();
@@ -218,7 +225,11 @@ fn unparseable_sibling_file_does_not_block_the_rest_of_the_search() {
         "broken.res has no `entry` text of its own"
     );
 
-    assert_eq!(execute(a), 0, "the run as a whole must still report success");
+    assert_eq!(
+        execute(a),
+        0,
+        "the run as a whole must still report success"
+    );
 }
 
 // -------------------------------------------------------------------------------------------
@@ -252,7 +263,11 @@ fn definitions_flag_excludes_call_sites_and_keeps_the_declaration_name() {
 
     a.definitions = false;
     let hits = search(&a).unwrap();
-    assert_eq!(hits.len(), 2, "without --definitions both occurrences match");
+    assert_eq!(
+        hits.len(),
+        2,
+        "without --definitions both occurrences match"
+    );
 }
 
 // -------------------------------------------------------------------------------------------

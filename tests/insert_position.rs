@@ -47,10 +47,7 @@ fn before_at_root() {
         after.find("let newDecl = 0").expect("newDecl present"),
         after.find("let b = 2").expect("b present"),
     );
-    assert!(
-        ia < iz && iz < ib,
-        "expected order a, newDecl, b:\n{after}"
-    );
+    assert!(ia < iz && iz < ib, "expected order a, newDecl, b:\n{after}");
     assert_reparses_clean(&file);
 }
 
@@ -65,10 +62,7 @@ fn after_at_root() {
         after.find("let newDecl = 0").expect("newDecl present"),
         after.find("let b = 2").expect("b present"),
     );
-    assert!(
-        ia < iz && iz < ib,
-        "expected order a, newDecl, b:\n{after}"
-    );
+    assert!(ia < iz && iz < ib, "expected order a, newDecl, b:\n{after}");
     assert_reparses_clean(&file);
 }
 
@@ -133,15 +127,23 @@ fn before_anchor_with_decorator_and_doc_comment_keeps_them_on_anchor() {
         "Greet.res",
         "let before = 0\n\n/** doc for greet */\n@genType\nlet greet = () => \"hi\"\n",
     );
-    set_decl_at(&file, Some("newBefore"), "let newBefore = 1", Some("greet"), None)
-        .expect("insert before greet");
+    set_decl_at(
+        &file,
+        Some("newBefore"),
+        "let newBefore = 1",
+        Some("greet"),
+        None,
+    )
+    .expect("insert before greet");
     let after = read(&file);
     assert!(
         after.contains("/** doc for greet */\n@genType\nlet greet = () => \"hi\""),
         "greet's doc comment and decorator must stay attached to it, unsplit:\n{after}"
     );
     let inew = after.find("let newBefore = 1").expect("newBefore present");
-    let idoc = after.find("/** doc for greet */").expect("doc comment present");
+    let idoc = after
+        .find("/** doc for greet */")
+        .expect("doc comment present");
     assert!(
         inew < idoc,
         "newBefore must land BEFORE greet's decorator/doc, not between them and `let`:\n{after}"
@@ -159,8 +161,14 @@ fn after_anchor_with_trailing_comment_goes_past_it() {
         "Greet.res",
         "let greet = () => \"hi\" // trailing note\nlet after = 0\n",
     );
-    set_decl_at(&file, Some("newAfter"), "let newAfter = 1", None, Some("greet"))
-        .expect("insert after greet");
+    set_decl_at(
+        &file,
+        Some("newAfter"),
+        "let newAfter = 1",
+        None,
+        Some("greet"),
+    )
+    .expect("insert after greet");
     let after = read(&file);
     assert!(
         after.contains("let greet = () => \"hi\" // trailing note\n\nlet newAfter = 1"),
@@ -207,12 +215,22 @@ fn after_into_one_line_block_keeps_close_brace_on_its_own_line() {
 fn anchor_not_found_is_refused() {
     let (_dir, file) = scratch_file("Root.res", "let a = 1\n");
     let before = read(&file);
-    let err = set_decl_at(&file, Some("newDecl"), "let newDecl = 0", Some("nonexistent"), None)
-        .expect_err("anchor does not exist");
+    let err = set_decl_at(
+        &file,
+        Some("newDecl"),
+        "let newDecl = 0",
+        Some("nonexistent"),
+        None,
+    )
+    .expect_err("anchor does not exist");
     let msg = err.to_string();
     assert!(msg.contains("no declaration at"), "{msg}");
     assert!(msg.contains("nonexistent"), "{msg}");
-    assert_eq!(read(&file), before, "a failed insert must not touch the file");
+    assert_eq!(
+        read(&file),
+        before,
+        "a failed insert must not touch the file"
+    );
 }
 
 #[test]
@@ -222,8 +240,14 @@ fn anchor_in_another_module_is_refused() {
         "module A = {\n  let x = 1\n}\nmodule B = {\n  let y = 2\n}\n",
     );
     let before = read(&file);
-    let err = set_decl_at(&file, Some("B.newDecl"), "let newDecl = 0", Some("A.x"), None)
-        .expect_err("anchor A.x is not in module B");
+    let err = set_decl_at(
+        &file,
+        Some("B.newDecl"),
+        "let newDecl = 0",
+        Some("A.x"),
+        None,
+    )
+    .expect_err("anchor A.x is not in module B");
     let msg = err.to_string();
     assert!(msg.contains("module `A`"), "{msg}");
     assert!(msg.contains("module `B`"), "{msg}");
@@ -231,7 +255,11 @@ fn anchor_in_another_module_is_refused() {
         msg.contains("--name 'A.newDecl'"),
         "the suggested --name must be shell-quoted:\n{msg}"
     );
-    assert_eq!(read(&file), before, "a failed insert must not touch the file");
+    assert_eq!(
+        read(&file),
+        before,
+        "a failed insert must not touch the file"
+    );
 }
 
 // The suggested `--name` above happened to need no quoting to be useful, but it must still get
@@ -245,14 +273,24 @@ fn anchor_mismatch_hint_quotes_an_anonymous_leaf_name() {
         "module M = {\n  let y = 2\n}\nmodule Other = {\n  let q = 1\n}\n",
     );
     let before = read(&file);
-    let err = set_decl_at(&file, Some("Other.()"), "let () = sideEffect()", Some("M.y"), None)
-        .expect_err("anchor M.y is not in module Other");
+    let err = set_decl_at(
+        &file,
+        Some("Other.()"),
+        "let () = sideEffect()",
+        Some("M.y"),
+        None,
+    )
+    .expect_err("anchor M.y is not in module Other");
     let msg = err.to_string();
     assert!(
         msg.contains("--name 'M.()'"),
         "the shell needs quotes around a `()` leaf:\n{msg}"
     );
-    assert_eq!(read(&file), before, "a failed insert must not touch the file");
+    assert_eq!(
+        read(&file),
+        before,
+        "a failed insert must not touch the file"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -263,7 +301,8 @@ fn anchor_mismatch_hint_quotes_an_anonymous_leaf_name() {
 fn existing_name_plus_before_is_refused_byte_identical() {
     let (_dir, file) = scratch_file("Root.res", "let a = 1\nlet b = 2\n");
     let before = read(&file);
-    let err = set_decl_at(&file, Some("b"), "let b = 99", Some("a"), None).expect_err("b already exists");
+    let err =
+        set_decl_at(&file, Some("b"), "let b = 99", Some("a"), None).expect_err("b already exists");
     let msg = err.to_string();
     assert!(msg.contains("already exists"), "{msg}");
     assert!(msg.contains("anchor was `a`"), "{msg}");
@@ -278,7 +317,8 @@ fn existing_name_plus_before_is_refused_byte_identical() {
 fn existing_name_plus_after_is_refused_byte_identical() {
     let (_dir, file) = scratch_file("Root.res", "let a = 1\nlet b = 2\n");
     let before = read(&file);
-    let err = set_decl_at(&file, Some("a"), "let a = 99", None, Some("b")).expect_err("a already exists");
+    let err =
+        set_decl_at(&file, Some("a"), "let a = 99", None, Some("b")).expect_err("a already exists");
     let msg = err.to_string();
     assert!(msg.contains("already exists"), "{msg}");
     assert!(msg.contains("anchor was `b`"), "{msg}");

@@ -169,8 +169,7 @@ impl SourceDir {
                 .into_iter()
                 .filter_entry(|e| !is_excluded_dir(e))
             {
-                let entry =
-                    entry.with_context(|| format!("walking {}", base.display()))?;
+                let entry = entry.with_context(|| format!("walking {}", base.display()))?;
                 if entry.file_type().is_file() && is_source_file(entry.path()) {
                     files.push(entry.path().to_path_buf());
                 }
@@ -179,8 +178,8 @@ impl SourceDir {
             let read_dir = std::fs::read_dir(&base)
                 .with_context(|| format!("reading directory {}", base.display()))?;
             for entry in read_dir {
-                let entry = entry
-                    .with_context(|| format!("reading directory {}", base.display()))?;
+                let entry =
+                    entry.with_context(|| format!("reading directory {}", base.display()))?;
                 let path = entry.path();
                 if entry.file_type()?.is_file() && is_source_file(&path) {
                     files.push(path);
@@ -302,9 +301,9 @@ impl TryFrom<RawConfig> for ProjectConfig {
 
         let namespace = match raw.namespace {
             None | Some(RawNamespace::Enabled(false)) => Namespace::None,
-            Some(RawNamespace::Enabled(true)) => {
-                Namespace::Named(namespace_from_package_name(raw.name.as_deref().unwrap_or("")))
-            }
+            Some(RawNamespace::Enabled(true)) => Namespace::Named(namespace_from_package_name(
+                raw.name.as_deref().unwrap_or(""),
+            )),
             Some(RawNamespace::Named(name)) => Namespace::Named(name),
         };
 

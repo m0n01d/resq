@@ -8,12 +8,12 @@
 //!
 //! Every mutating test writes to its own `tempfile::TempDir`, never to `tests/fixtures/`.
 
+use resq::BinderKind;
 use resq::analysis::extract_summary;
 use resq::edit::{patch, rm_decl, set_decl, set_decl_at};
 use resq::extract::extract_group;
 use resq::parser::parse;
 use resq::refs::find;
-use resq::BinderKind;
 
 // -------------------------------------------------------------------------------------------
 // Scratch helpers
@@ -80,8 +80,18 @@ fn type_annotation_does_not_change_the_name() {
     let src = std::fs::read_to_string(&path).unwrap();
     let tree = parse(&src).expect("parses");
     let summary = extract_summary(&tree, &src, "AllTests");
-    assert!(summary.declarations.iter().any(|d| d.names == vec!["()".to_string()]));
-    assert!(summary.declarations.iter().any(|d| d.names == vec!["_".to_string()]));
+    assert!(
+        summary
+            .declarations
+            .iter()
+            .any(|d| d.names == vec!["()".to_string()])
+    );
+    assert!(
+        summary
+            .declarations
+            .iter()
+            .any(|d| d.names == vec!["_".to_string()])
+    );
 }
 
 /// Other nameless patterns stay unaddressable: `_` (and any other pattern) nested *inside* a
@@ -93,7 +103,11 @@ fn nested_wildcard_inside_a_tuple_stays_unaddressable() {
     let tree = parse(&src).expect("parses");
     let summary = extract_summary(&tree, &src, "AllTests");
     let decl = &summary.declarations[0];
-    assert!(decl.names.is_empty(), "names should stay empty: {:?}", decl.names);
+    assert!(
+        decl.names.is_empty(),
+        "names should stay empty: {:?}",
+        decl.names
+    );
     assert_eq!(decl.binder_kind, BinderKind::Destructuring);
 }
 
@@ -121,9 +135,7 @@ fn get_unit_and_wildcard() {
 /// Nested: `Inner.()` inside `module Inner = { … }`.
 #[test]
 fn get_nested_inner_unit() {
-    let (_dir, path) = scratch_res(
-        "module Inner = {\n  let () = Console.log(\"inner\")\n}\n",
-    );
+    let (_dir, path) = scratch_res("module Inner = {\n  let () = Console.log(\"inner\")\n}\n");
     let result = extract_group(&path, &["Inner.()".to_string()]).expect("get Inner.() failed");
     assert_eq!(result.len(), 1);
     assert!(result[0].source.contains("inner"));
@@ -134,9 +146,10 @@ fn get_nested_inner_unit() {
 /// must still hold now that `()` is a real, matchable name.
 #[test]
 fn two_unit_bindings_are_ambiguous() {
-    let (_dir, path) = scratch_res("let () = Console.log(\"first\")\nlet () = Console.log(\"second\")\n");
-    let err = extract_group(&path, &["()".to_string()])
-        .expect_err("get () should refuse as ambiguous");
+    let (_dir, path) =
+        scratch_res("let () = Console.log(\"first\")\nlet () = Console.log(\"second\")\n");
+    let err =
+        extract_group(&path, &["()".to_string()]).expect_err("get () should refuse as ambiguous");
     assert!(
         err.to_string().contains("ambiguous"),
         "expected an ambiguity error, got: {err}"
@@ -194,7 +207,8 @@ fn rm_decl_unit_binding_leaves_file_clean() {
 
 #[test]
 fn rm_decl_wildcard_binding() {
-    let (_dir, path) = scratch_res("let () = Console.log(\"keep\")\n\nlet _ = Console.log(\"drop\")\n");
+    let (_dir, path) =
+        scratch_res("let () = Console.log(\"keep\")\n\nlet _ = Console.log(\"drop\")\n");
     rm_decl(&path, &["_".to_string()]).expect("rm decl _ should succeed");
     let updated = std::fs::read_to_string(&path).unwrap();
     assert_eq!(updated, "let () = Console.log(\"keep\")\n");
@@ -209,11 +223,15 @@ fn set_decl_replaces_unit_binding_by_name() {
     let (_dir, path) = scratch_res(
         "let () = {\n  Console.log(\"test 1\")\n}\n\nlet _ = Console.log(\"side effect\")\n",
     );
-    set_decl(&path, Some("()"), "let () = Console.log(\"replaced\")").expect("set decl should succeed");
+    set_decl(&path, Some("()"), "let () = Console.log(\"replaced\")")
+        .expect("set decl should succeed");
     let updated = std::fs::read_to_string(&path).unwrap();
     assert!(updated.contains("replaced"));
     assert!(!updated.contains("test 1"));
-    assert!(updated.contains("side effect"), "unrelated binding must survive");
+    assert!(
+        updated.contains("side effect"),
+        "unrelated binding must survive"
+    );
 }
 
 #[test]
@@ -246,8 +264,14 @@ fn explicit_name_unit_appends_when_none_exists() {
 #[test]
 fn before_adds_a_second_unit_binding_when_one_already_exists() {
     let (_dir, path) = scratch_res("let () = Console.log(\"first\")\nlet marker = 1\n");
-    set_decl_at(&path, Some("()"), "let () = Console.log(\"second\")", Some("marker"), None)
-        .expect("--before on `()` should add, not refuse, when one already exists");
+    set_decl_at(
+        &path,
+        Some("()"),
+        "let () = Console.log(\"second\")",
+        Some("marker"),
+        None,
+    )
+    .expect("--before on `()` should add, not refuse, when one already exists");
     let updated = std::fs::read_to_string(&path).unwrap();
     assert_eq!(
         updated,
@@ -261,8 +285,14 @@ fn before_adds_a_second_unit_binding_when_one_already_exists() {
 #[test]
 fn after_adds_a_second_wildcard_binding_when_one_already_exists() {
     let (_dir, path) = scratch_res("let marker = 1\nlet _ = Console.log(\"first\")\n");
-    set_decl_at(&path, Some("_"), "let _ = Console.log(\"second\")", None, Some("marker"))
-        .expect("--after on `_` should add, not refuse, when one already exists");
+    set_decl_at(
+        &path,
+        Some("_"),
+        "let _ = Console.log(\"second\")",
+        None,
+        Some("marker"),
+    )
+    .expect("--after on `_` should add, not refuse, when one already exists");
     let updated = std::fs::read_to_string(&path).unwrap();
     assert_eq!(
         updated,
@@ -278,8 +308,14 @@ fn after_adds_a_second_wildcard_binding_when_one_already_exists() {
 #[test]
 fn before_with_no_name_adds_a_second_unit_binding_when_one_already_exists() {
     let (_dir, path) = scratch_res("let marker = 1\nlet () = Console.log(\"first\")\n");
-    set_decl_at(&path, None, "let () = Console.log(\"second\")", Some("marker"), None)
-        .expect("--before with implicit name should still add, not refuse");
+    set_decl_at(
+        &path,
+        None,
+        "let () = Console.log(\"second\")",
+        Some("marker"),
+        None,
+    )
+    .expect("--before with implicit name should still add, not refuse");
     let updated = std::fs::read_to_string(&path).unwrap();
     assert_eq!(
         updated,
@@ -302,15 +338,27 @@ fn implicit_set_decl_refuses_when_unit_binding_already_exists() {
     let err = set_decl(&path, None, "let () = Console.log(\"second\")")
         .expect_err("implicit set decl must refuse when `()` already exists");
     let msg = err.to_string();
-    assert!(msg.contains(path.to_str().unwrap()), "message should name the file: {msg}");
-    assert!(msg.contains("line 1"), "message should name the existing binding's line: {msg}");
-    assert!(msg.contains("--name '()'"), "message should hint --name '()': {msg}");
+    assert!(
+        msg.contains(path.to_str().unwrap()),
+        "message should name the file: {msg}"
+    );
+    assert!(
+        msg.contains("line 1"),
+        "message should name the existing binding's line: {msg}"
+    );
+    assert!(
+        msg.contains("--name '()'"),
+        "message should hint --name '()': {msg}"
+    );
     assert!(
         msg.contains("--before") && msg.contains("--after"),
         "message should hint --before/--after: {msg}"
     );
     let after = std::fs::read_to_string(&path).unwrap();
-    assert_eq!(after, before, "a refused set decl must leave the file byte-identical");
+    assert_eq!(
+        after, before,
+        "a refused set decl must leave the file byte-identical"
+    );
 }
 
 #[test]
@@ -320,11 +368,23 @@ fn implicit_set_decl_refuses_when_wildcard_binding_already_exists() {
     let err = set_decl(&path, None, "let _ = Console.log(\"second\")")
         .expect_err("implicit set decl must refuse when `_` already exists");
     let msg = err.to_string();
-    assert!(msg.contains(path.to_str().unwrap()), "message should name the file: {msg}");
-    assert!(msg.contains("line 1"), "message should name the existing binding's line: {msg}");
-    assert!(msg.contains("--name '_'"), "message should hint --name '_': {msg}");
+    assert!(
+        msg.contains(path.to_str().unwrap()),
+        "message should name the file: {msg}"
+    );
+    assert!(
+        msg.contains("line 1"),
+        "message should name the existing binding's line: {msg}"
+    );
+    assert!(
+        msg.contains("--name '_'"),
+        "message should hint --name '_': {msg}"
+    );
     let after = std::fs::read_to_string(&path).unwrap();
-    assert_eq!(after, before, "a refused set decl must leave the file byte-identical");
+    assert_eq!(
+        after, before,
+        "a refused set decl must leave the file byte-identical"
+    );
 }
 
 /// Two existing `()` bindings: the refusal names every one of them, not just the first.
@@ -336,9 +396,15 @@ fn implicit_set_decl_refusal_names_every_existing_line() {
     let err = set_decl(&path, None, "let () = Console.log(\"third\")")
         .expect_err("implicit set decl must refuse when `()` already exists more than once");
     let msg = err.to_string();
-    assert!(msg.contains("lines 1, 3"), "message should name both existing lines: {msg}");
+    assert!(
+        msg.contains("lines 1, 3"),
+        "message should name both existing lines: {msg}"
+    );
     let after = std::fs::read_to_string(&path).unwrap();
-    assert_eq!(after, before, "a refused set decl must leave the file byte-identical");
+    assert_eq!(
+        after, before,
+        "a refused set decl must leave the file byte-identical"
+    );
 }
 
 /// TASK 1b, no-existing-binding case: with no position and no `--name`, and nothing to collide
@@ -378,11 +444,11 @@ fn refs_on_wildcard_target_finds_no_false_positive_from_unrelated_switch_arm() {
 
 #[test]
 fn refs_on_unit_target_does_not_error() {
-    let (_dir, src) = scratch_project(&[(
-        "AllTests.res",
-        "let () = Console.log(\"test 1\")\n",
-    )]);
+    let (_dir, src) = scratch_project(&[("AllTests.res", "let () = Console.log(\"test 1\")\n")]);
     let file = src.join("AllTests.res");
     let refs = find(&file, &["()".to_string()]).expect("refs on `()` should resolve, not error");
-    assert!(refs.is_empty(), "`()` cannot be referenced from elsewhere: {refs:?}");
+    assert!(
+        refs.is_empty(),
+        "`()` cannot be referenced from elsewhere: {refs:?}"
+    );
 }

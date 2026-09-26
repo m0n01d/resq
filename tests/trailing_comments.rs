@@ -60,13 +60,8 @@ fn get_includes_the_trailing_comment() {
 #[test]
 fn patch_reaches_text_inside_the_trailing_comment() {
     let (_dir, file) = scratch_file("Tabs.res", REPRO);
-    patch(
-        &file,
-        "tab",
-        "polling continues",
-        "polling stops",
-    )
-    .expect("patch should find text inside the trailing comment");
+    patch(&file, "tab", "polling continues", "polling stops")
+        .expect("patch should find text inside the trailing comment");
     let after = read(&file);
     assert!(after.contains("polling stops"));
     assert!(!after.contains("polling continues"));
