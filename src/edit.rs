@@ -750,7 +750,7 @@ fn insert_relative_to(
     if anchor.decl.path != target_parent {
         bail!(
             "resq set decl: anchor `{anchor_path}` is in {}, but `{target}` would be created in \
-             {}; pass --name {} to create it alongside the anchor",
+             {}; pass --name '{}' to create it alongside the anchor",
             module_label(&anchor.decl.path),
             module_label(&target_parent),
             suggested_name(&anchor.decl.path, leaf),

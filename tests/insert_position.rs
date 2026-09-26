@@ -227,7 +227,31 @@ fn anchor_in_another_module_is_refused() {
     let msg = err.to_string();
     assert!(msg.contains("module `A`"), "{msg}");
     assert!(msg.contains("module `B`"), "{msg}");
-    assert!(msg.contains("A.newDecl"), "{msg}");
+    assert!(
+        msg.contains("--name 'A.newDecl'"),
+        "the suggested --name must be shell-quoted:\n{msg}"
+    );
+    assert_eq!(read(&file), before, "a failed insert must not touch the file");
+}
+
+// The suggested `--name` above happened to need no quoting to be useful, but it must still get
+// quoted (a plain shell word doesn't need it, yet the hint quotes it anyway for consistency and
+// so the agent copy-pastes a form that always works). The case that actually BREAKS unquoted is
+// an anonymous leaf: `--name M.()` is not one shell word, so it must print `--name 'M.()'`.
+#[test]
+fn anchor_mismatch_hint_quotes_an_anonymous_leaf_name() {
+    let (_dir, file) = scratch_file(
+        "Modules.res",
+        "module M = {\n  let y = 2\n}\nmodule Other = {\n  let q = 1\n}\n",
+    );
+    let before = read(&file);
+    let err = set_decl_at(&file, Some("Other.()"), "let () = sideEffect()", Some("M.y"), None)
+        .expect_err("anchor M.y is not in module Other");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("--name 'M.()'"),
+        "the shell needs quotes around a `()` leaf:\n{msg}"
+    );
     assert_eq!(read(&file), before, "a failed insert must not touch the file");
 }
 
