@@ -775,6 +775,19 @@ fn insert_relative_to(
             let mut inserted = String::from("\n\n");
             inserted.push_str(&indent);
             inserted.push_str(&indent_continuation_lines(content, &indent));
+            // The anchor may be the last member of a one-line block body, e.g.
+            // `module M = { let a = 1 }`, whose closing `}` follows right after `anchor_end` on
+            // the same line. Splicing `content` in there unqualified would let that trailing text
+            // run into a `//` comment inside `content` and be swallowed by it — the same hazard
+            // `append_into_block` already guards against for plain appends. Detect the same
+            // condition (non-space text left on the anchor's line) and push it onto its own line.
+            let line_end = src[anchor_end..]
+                .find('\n')
+                .map_or(src.len(), |i| anchor_end + i);
+            if !src[anchor_end..line_end].trim().is_empty() {
+                inserted.push('\n');
+                inserted.push_str(&indent);
+            }
             Ok(splice(src, anchor_end, anchor_end, &inserted))
         }
     }

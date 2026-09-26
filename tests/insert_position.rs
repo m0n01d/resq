@@ -5,6 +5,7 @@
 //! `tests/fixtures/`. See `src/edit.rs::insert_relative_to` for the implementation this exercises.
 
 use resq::edit::set_decl_at;
+use resq::extract::extract_group;
 use resq::parser;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -173,6 +174,29 @@ fn after_anchor_with_trailing_comment_goes_past_it() {
         "expected order: trailing comment, newAfter, old after:\n{after}"
     );
     assert_reparses_clean(&file);
+}
+
+// ---------------------------------------------------------------------------------------------
+// `--after` into a one-line block body: the closing `}` follows right after the anchor on the
+// SAME line. A naive splice would let it run into a trailing `//` comment inside `content` and
+// get swallowed — the validated write would then refuse the corrupt result. See
+// `insert_relative_to`'s `InsertPosition::After` arm.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn after_into_one_line_block_keeps_close_brace_on_its_own_line() {
+    let (_dir, file) = scratch_file("M.res", "module M = { let a = 1 }\n");
+    set_decl_at(&file, Some("M.z"), "let z = 0 // zc", None, Some("M.a"))
+        .expect("insert after M.a inside a one-line block body");
+    let after = read(&file);
+    assert!(
+        !after.contains("// zc }") && !after.contains("// zc}"),
+        "the closing brace must not be swallowed by the trailing comment:\n{after}"
+    );
+    assert_reparses_clean(&file);
+    let found = extract_group(&file, &["M.z".to_string(), "M.a".to_string()])
+        .expect("both M.z and M.a must resolve after the insert");
+    assert_eq!(found.len(), 2);
 }
 
 // ---------------------------------------------------------------------------------------------
