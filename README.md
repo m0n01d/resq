@@ -48,6 +48,8 @@ resq guide          # prints the full agent-facing reference to stdout
   a guess.
 - **Decorators and doc comments are part of the declaration.** `get` returns them and `rm decl`
   removes them. A `get` that dropped `@react.component` would hand you code that doesn't compile.
+- **A trailing `;` and comment stay with the declaration.** A `;` right after a declaration, on
+  the same line, belongs to it. Any comment after that `;` belongs to it too.
 - **There is no `expose`/`unexpose`.** `.resi` interface files parse with the same grammar as
   `.res`, so edit them with the ordinary commands — point `set decl` / `rm decl` / `patch` at the
   `.resi` directly.
@@ -234,6 +236,31 @@ ok
 
 Also `add open` and `rm open`. Content for `set decl` comes from `--content` or stdin.
 
+`set decl --before <path>` and `--after <path>` insert a new declaration next to an existing one.
+By default, `set decl` appends a new declaration at the end of the module instead. Use `--before`
+when an earlier declaration already calls the new name. ReScript needs a name defined before its
+use:
+
+```sh
+$ resq set decl src/Main.res --name helper --content 'let helper = x => x * 2' --before main
+ok
+```
+```rescript
+open Belt
+
+let helper = x => x * 2
+
+/** Entry point for the demo. */
+@genType
+let main = () => {
+```
+
+`helper` lands right before `main`, and the doc comment and `@genType` for `main` stay attached to
+`main`. The anchor must be in the same module as the new name. When `--name` already exists in the
+file, both flags refuse. This check looks at every name the new content binds, not only `--name`
+itself. `()` and `_` bind no name, so they are exempt. Plain `set decl` already replaces an
+existing declaration in place.
+
 ### Write safety
 
 Every write command:
@@ -287,6 +314,13 @@ safe failure. A module referenced *only* through local-open sugar is invisible t
 
 Measured against the ReScript compiler repo (3,181 real `.res`/`.resi` files): **99.3% parse clean**
 excluding `%replace.type`, which appears almost exclusively in deprecated stdlib shims.
+
+A few more gaps come from anonymous bindings (`let () = …`, `let _ = …`). Two of either in one
+module are ambiguous. `get`, `patch`, `rm decl`, and `set decl --name` refuse them, though `set
+decl --before`/`--after` can still add another past the pair. A pattern with no name at all, such
+as `let (_, _) = pair`, and a bare top-level expression, such as `main()`, both stay unaddressable.
+`refs` on `()` or `_` returns nothing, while `grep --definitions` returns a definition row for
+either.
 
 ## Status
 

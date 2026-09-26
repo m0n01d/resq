@@ -408,7 +408,8 @@ struct DeclRange {
     /// The canonical dot-path this range answers to (`Declaration::primary_path`).
     primary_path: ModulePath,
     kind: DeclarationKind,
-    /// Byte span including decorators/doc comment (`parser::decl_span_with_attachments`).
+    /// Byte span including decorators/doc comment and a trailing same-line comment
+    /// (`parser::decl_full_span`).
     full_start: usize,
     full_end: usize,
     /// Byte spans of the declaration's own name(s), for `--definitions`.
@@ -426,8 +427,7 @@ fn collect_decl_ranges(node: Node, src: &str, path: &ModulePath, out: &mut Vec<D
         let Some(decl) = parser::declaration_from_node(child, src, path) else {
             continue;
         };
-        let (full_start, _) = parser::decl_span_with_attachments(child, src);
-        let full_end = child.end_byte();
+        let (full_start, full_end) = parser::decl_full_span(child, src);
         let name_spans = collect_name_spans(child, src);
         let primary_path = decl.primary_path();
         let kind = decl.kind;
@@ -504,7 +504,17 @@ fn collect_name_spans(node: Node, src: &str) -> Vec<(usize, usize)> {
                         continue;
                     }
                     if let Some(pattern) = binding.child(i) {
-                        spans.extend(parser::bound_name_spans(pattern, src));
+                        // `()` and a bare `_` as the WHOLE pattern are addressable
+                        // (`parser::let_declaration_parts` gives them the literal name
+                        // `"()"`/`"_"`), so `--definitions` must annotate their span too, the
+                        // same way `refs.rs`'s `decl_name_spans` does. `bound_name_spans` alone
+                        // can't do this — it must keep skipping `_` for every other caller, e.g.
+                        // a switch-arm wildcard is never a definition.
+                        if parser::anonymous_binder_name(pattern, src).is_some() {
+                            spans.push((pattern.start_byte(), pattern.end_byte()));
+                        } else {
+                            spans.extend(parser::bound_name_spans(pattern, src));
+                        }
                     }
                 }
             }

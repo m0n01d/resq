@@ -986,6 +986,23 @@ fn decl_name_spans(node: Node, src: &str) -> Vec<(String, usize, usize)> {
                     let Some(pattern) = binding.child(i) else {
                         continue;
                     };
+                    // `()` and a bare `_` as the WHOLE pattern are addressable.
+                    // `parser::let_declaration_parts` gives them the literal name `"()"`/`"_"`.
+                    // This function must register a span for them here too. Without a span, the
+                    // outline entry for the binding has no path of its own. It falls back to the
+                    // path of its enclosing module instead.
+                    //
+                    // This registration does not make `refs` report the definition for `()` or
+                    // `_`. `collect_occurrences` never creates an `Occ` for either one, so `refs`
+                    // on either one still returns nothing, not even its own definition.
+                    //
+                    // `bound_name_spans` alone does not do this. It must keep skipping `_` for
+                    // every other caller. A switch-arm wildcard is one example, and it is never a
+                    // reference.
+                    if let Some(name) = parser::anonymous_binder_name(pattern, src) {
+                        out.push((name, pattern.start_byte(), pattern.end_byte()));
+                        continue;
+                    }
                     for (s, e) in parser::bound_name_spans(pattern, src) {
                         if let Some(text) = src.get(s..e) {
                             out.push((text.to_string(), s, e));

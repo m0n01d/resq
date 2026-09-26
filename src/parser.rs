@@ -165,7 +165,66 @@ pub fn decl_span_with_attachments(node: Node, src: &str) -> (usize, usize) {
 /// Companion to [`decl_span_with_attachments`] for callers that splice by byte offset.
 pub fn decl_full_span(node: Node, src: &str) -> (usize, usize) {
     let (start, _) = decl_span_with_attachments(node, src);
-    (start, node.end_byte())
+    (start, decl_end(node, src))
+}
+
+/// The end of a declaration **including a trailing comment on its own last line**, as a byte
+/// offset one past the last included byte (matching [`tree_sitter::Node::end_byte`]'s convention).
+///
+/// Mirrors [`decl_span_with_attachments`] on the other side: a decorator/doc comment is the
+/// declaration's *leading* attachment, and a plain comment left on the declaration's own last line
+/// is its *trailing* one. Without this, `let x = 1 // note` followed by more declarations lets
+/// `rm decl x` orphan `// note` onto whatever comes next, and lets `get`/`patch` miss it entirely.
+///
+/// Walks forward over contiguous following siblings, taking a sibling only when **both** hold:
+///
+/// * it is a `line_comment`, or a `block_comment` that is **not** a doc comment
+///   ([`is_doc_comment`]) — a `/** … */` doc comment is always the *next* declaration's leading
+///   attachment (SPEC §1 finding 2), and the two spans must never overlap;
+/// * it starts on the row where the declaration (or the last comment already taken) ends — a
+///   comment on its own following line is free-standing prose, not a trailing note, matching the
+///   "next line comment is not attached" case.
+///
+/// Stops at the first sibling that fails either test — a trailing block comment can itself span
+/// multiple lines, so each step re-checks from that comment's own end row, not the declaration's.
+pub fn decl_end(node: Node, src: &str) -> usize {
+    decl_end_node(node, src).end_byte()
+}
+
+/// The terminal node of a declaration's span — `node` itself, or the last trailing `;` / comment
+/// absorbed by the rule documented on [`decl_end`].
+///
+/// Exposed separately (not just as the byte offset [`decl_end`] returns) so a caller that also
+/// needs the end **row** — [`declaration_from_node`]'s `end_line` — can read it straight off this
+/// node's `end_position()`. Re-deriving the row from the byte offset via
+/// [`byte_offset_to_line_col`] scans `src` from byte 0 on every call, which made building the
+/// declaration list for a whole file quadratic in its length.
+fn decl_end_node<'a>(node: Node<'a>, src: &str) -> Node<'a> {
+    let mut end = node;
+    let mut end_row = node.end_position().row;
+    let mut cursor = node;
+    while let Some(next) = cursor.next_sibling() {
+        // A bare `;` after the binding (`let x = 1;`) is not a comment, but it sits on the same
+        // row as the declaration and must be absorbed the same way a trailing comment is —
+        // otherwise it (and any comment following it) is left behind by `rm decl` / missed by
+        // `get`. Check this before the comment test below so a comment after the `;` is still
+        // walked into on the next loop iteration.
+        if next.kind() == ";" && next.start_position().row == end_row {
+            end = next;
+            end_row = next.end_position().row;
+            cursor = next;
+            continue;
+        }
+        let is_trailing_comment =
+            next.kind() == "line_comment" || (next.kind() == "block_comment" && !is_doc_comment(next, src));
+        if !is_trailing_comment || next.start_position().row != end_row {
+            break;
+        }
+        end = next;
+        end_row = next.end_position().row;
+        cursor = next;
+    }
+    end
 }
 
 /// True when the gap between two adjacent siblings contains an empty line.
@@ -262,7 +321,7 @@ pub fn declaration_from_node(node: Node, src: &str, path: &ModulePath) -> Option
         type_annotation,
         doc_comment,
         start_line,
-        end_line: node.end_position().row + 1,
+        end_line: decl_end_node(node, src).end_position().row + 1,
     })
 }
 
@@ -356,6 +415,16 @@ fn let_declaration_parts(node: Node, src: &str) -> (Vec<String>, BinderKind, Opt
             let Some(pattern) = binding.child(i) else {
                 continue;
             };
+            if let Some(anonymous) = anonymous_binder_name(pattern, src) {
+                // `()` and a bare `_` as the WHOLE pattern get their literal text as a name, so
+                // `let () = sideEffect()` becomes addressable. `bound_names` would return nothing
+                // here (`unit` has no `value_identifier` child; `_` is deliberately skipped by
+                // `collect_bound_name_spans` for every OTHER caller, e.g. switch-arm wildcards,
+                // which must stay unbound). `binder_kind` stays `Simple`: this is still one name
+                // through one plain binder, not a destructuring.
+                names.push(anonymous);
+                continue;
+            }
             if pattern.kind() != "value_identifier" {
                 binder_kind = BinderKind::Destructuring;
             }
@@ -364,6 +433,33 @@ fn let_declaration_parts(node: Node, src: &str) -> (Vec<String>, BinderKind, Opt
     }
 
     (names, binder_kind, annotation)
+}
+
+/// The literal name `"()"` or `"_"` when `pattern` is, in its entirety, the unit pattern `()` or a
+/// bare wildcard `_` — the two nameless-looking binders resq can still address (gap fix, see
+/// [`let_declaration_parts`]). `None` for every other pattern, including one that merely
+/// *contains* `()` or `_` (`let (a, ()) = pair`, `let (_, _) = pair`): only the whole-pattern case
+/// is addressable, matching [`bound_names`], which already leaves those nested occurrences
+/// unbound.
+///
+/// `pub(crate)` so [`crate::refs`] can register the same definition span for its own,
+/// independent `decl_name_spans` — that function mirrors this one but calls
+/// [`bound_name_spans`] directly, which must keep skipping `_` for every other caller (a
+/// switch-arm wildcard is never a reference). Sharing this helper, rather than a second copy of
+/// the special case, is what keeps the two from drifting apart.
+///
+/// A type annotation does not change this: `let (): unit = …` and `let _: int = …` still hand
+/// this function a bare `unit` / `value_identifier` pattern node, because `type_annotation` is a
+/// sibling of `pattern` on `let_binding`, never a wrapper around it (confirmed against the pinned
+/// grammar's `node-types.json`).
+pub(crate) fn anonymous_binder_name(pattern: Node, src: &str) -> Option<String> {
+    match pattern.kind() {
+        "unit" => Some("()".to_string()),
+        "value_identifier" if node_text(pattern, src).as_deref() == Some("_") => {
+            Some("_".to_string())
+        }
+        _ => None,
+    }
 }
 
 /// Every name a pattern binds, in source order, skipping `_` wildcards.

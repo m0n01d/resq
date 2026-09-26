@@ -5,6 +5,7 @@
 //! never against `tests/fixtures/` directly (SPEC §2 / task instructions). `tests/fixtures/`
 //! stays byte-for-byte as the conductor built it.
 
+use resq::analysis;
 use resq::cli::{AddAlias, AddOpen, RmOpen};
 use resq::imports::{run_add_alias, run_add_open, run_rm_open};
 use resq::parser;
@@ -500,6 +501,75 @@ fn add_alias_argument_without_equals_is_rejected_before_touching_the_file() {
 
     let after = fs::read_to_string(&file).unwrap();
     assert_eq!(before, after);
+}
+
+// -------------------------------------------------------------------------------------------
+// A `/**` doc comment trailing the anchor on its OWN line must not swallow the new open/alias.
+// `decl_full_span` deliberately excludes a doc comment (it belongs to the next declaration), so
+// a naive search for the next `\n` after that point can land *inside* a doc comment that spans
+// more than one line. The file still parses (comments are opaque to the grammar), but the new
+// `open`/`module` is dead text trapped inside the comment, not a real declaration.
+// -------------------------------------------------------------------------------------------
+
+#[test]
+fn add_open_lands_after_a_trailing_doc_comment_not_inside_it() {
+    let (_dir, file) = write_temp("open Belt /** a\nb */\nlet x = 1\n", "Imports.res");
+
+    run_add_open(AddOpen {
+        file: file.clone(),
+        modules: vec!["Js".to_string()],
+    })
+    .expect("add open should succeed");
+
+    let after = fs::read_to_string(&file).unwrap();
+    assert!(
+        after.contains("b */\nopen Js\nlet x = 1"),
+        "the new open must land after the doc comment closes, not inside it:\n{after}"
+    );
+    assert!(
+        !after.contains("a\nopen Js"),
+        "the new open must not land inside the doc comment:\n{after}"
+    );
+    assert!(reparses_clean(&after));
+
+    // The bug's real-world symptom: the new open silently never took effect.
+    let tree = parser::parse(&after).expect("parse");
+    let opens = analysis::extract_summary(&tree, &after, "Imports").opens;
+    assert!(
+        opens.iter().any(|o| o == "Js"),
+        "`open Js` must be a real open, not text trapped inside a comment: {opens:?}"
+    );
+}
+
+#[test]
+fn add_alias_lands_after_a_trailing_doc_comment_not_inside_it() {
+    let (_dir, file) = write_temp("open Belt /** a\nb */\nlet x = 1\n", "Imports.res");
+
+    run_add_alias(AddAlias {
+        file: file.clone(),
+        aliases: vec!["Arr=Belt.Array".to_string()],
+    })
+    .expect("add alias should succeed");
+
+    let after = fs::read_to_string(&file).unwrap();
+    assert!(
+        after.contains("b */\nmodule Arr = Belt.Array\nlet x = 1"),
+        "the new alias must land after the doc comment closes, not inside it:\n{after}"
+    );
+    assert!(
+        !after.contains("a\nmodule Arr"),
+        "the new alias must not land inside the doc comment:\n{after}"
+    );
+    assert!(reparses_clean(&after));
+
+    let tree = parser::parse(&after).expect("parse");
+    let aliases = analysis::extract_summary(&tree, &after, "Imports").aliases;
+    assert!(
+        aliases
+            .iter()
+            .any(|a| a.name == "Arr" && a.target == "Belt.Array"),
+        "`module Arr = Belt.Array` must be a real alias, not text trapped in a comment: {aliases:?}"
+    );
 }
 
 // -------------------------------------------------------------------------------------------

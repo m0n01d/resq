@@ -80,8 +80,8 @@ fn resolve_one(file: &Path, src: &str, found: &[Found], path: &ModulePath) -> Re
     match hits.as_slice() {
         [] => bail!("resq get: no declaration at `{path}` in {}", file.display()),
         [hit] => {
-            let (start_byte, _) = parser::decl_span_with_attachments(hit.node, src);
-            let source = src[start_byte..hit.node.end_byte()].to_string();
+            let (start_byte, end_byte) = parser::decl_full_span(hit.node, src);
+            let source = src[start_byte..end_byte].to_string();
             Ok(GetResult {
                 file: file.display().to_string(),
                 path: path.to_string(),
