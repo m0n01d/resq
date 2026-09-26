@@ -379,12 +379,17 @@ fn insertion_offset(root: Node, src: &str) -> usize {
         let is_alias = parser::declaration_kind(child) == Some(DeclarationKind::Module)
             && parser::module_alias_parts(child, src).is_some();
         if is_open || is_alias {
-            // `decl_full_span`'s end, not `child.end_byte()`: a trailing same-line comment (e.g.
-            // `open Belt /* start\nend */`) is not part of the node, but it IS part of the line
-            // the next `\n` search must skip past. `end_byte()` alone stops right after `Belt`,
-            // so `skip_to_next_line` would find the `\n` *inside* the block comment and splice
-            // the new `open`/alias there — still-parsing, silently swallowed by the comment.
-            anchor_end = Some(parser::decl_full_span(child, src).1);
+            // The insertion point must never land inside a comment. Start from this anchor's own
+            // end and step past every comment that trails it on the same line: an ordinary `/* */`
+            // or `//` (needed since 303e693 — `open Belt /* start\nend */` has its first `\n`
+            // *inside* the comment, so stopping at `child.end_byte()` and searching for `\n` from
+            // there would splice inside it), and also a `/**` doc comment on that same line.
+            // `decl_full_span` deliberately excludes a doc comment (SPEC §1 finding 2: it belongs
+            // to the *next* declaration), which is right for reading a declaration's own span but
+            // wrong here: `open Belt /** a\nb */\nlet x = 1` has no declaration of its own on that
+            // first line yet, so the line after `decl_full_span`'s end is a line *inside* the doc
+            // comment — the same still-parses-but-dead-text bug, in a different comment kind.
+            anchor_end = Some(skip_same_row_trailing_comments(child));
         }
     }
 
@@ -405,6 +410,29 @@ fn insertion_offset(root: Node, src: &str) -> usize {
     }
 
     0
+}
+
+/// Extends past `node`'s own end over every comment sibling that starts on the row where the
+/// previous piece ends — a `//` or `/* */` comment, **and**, unlike [`parser::decl_end`], a `/**`
+/// doc comment too. `decl_end`/`decl_full_span` must stop at a doc comment, because a doc comment
+/// belongs to the *next* declaration (SPEC §1 finding 2) — right for reading a declaration's own
+/// span, wrong for finding where to splice new text after it: a doc comment on the anchor's own
+/// line has no declaration of its own yet, and the first following newline can sit *inside* it.
+/// See the call site in `insertion_offset` for the concrete bug this fixes.
+fn skip_same_row_trailing_comments(node: Node) -> usize {
+    let mut end = node.end_byte();
+    let mut end_row = node.end_position().row;
+    let mut cursor = node;
+    while let Some(next) = cursor.next_sibling() {
+        let is_comment = matches!(next.kind(), "line_comment" | "block_comment");
+        if !is_comment || next.start_position().row != end_row {
+            break;
+        }
+        end = next.end_byte();
+        end_row = next.end_position().row;
+        cursor = next;
+    }
+    end
 }
 
 /// The byte offset of the start of the line following `offset` (i.e. right after the next `\n`
