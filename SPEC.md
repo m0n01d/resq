@@ -360,7 +360,7 @@ Scope decision: **reads + single-file writes.** Project-wide refactors (`mv`, `r
 ### Writes (paranoid — all obey §2)
 | Command | Notes |
 |---|---|
-| `resq set decl <file> [--name] [--content\|stdin]` | Upsert at a dot-path. |
+| `resq set decl <file> [--name] [--content\|stdin] [--before\|--after <path>]` | Upsert at a dot-path. `--before`/`--after` insert a new declaration next to an anchor instead, and only when `--name` does not already exist. |
 | `resq patch <file> <path> --old --new` | Exact match, once, within declaration scope. |
 | `resq rm decl <file> <path>...` | Removes decl + decorators + doc comment. Enforces the `.resi` sync guard (§3.3). |
 | `resq add open <file> <Module>...` | Ordered insert. |

@@ -68,6 +68,39 @@ usually the exact command to fix it.
 
 `rm decl` removes the declaration **with** its decorators and doc comment.
 
+## Trailing comments travel with the declaration
+
+A declaration owns the comments that follow it on its own last line. This is a `//` comment, or a
+`/* */` comment that is not a `/**` doc comment. Four commands respect it:
+
+- `get` includes it.
+- `patch` can edit text inside it.
+- `set decl` replaces it along with the declaration.
+- `rm decl` and `rm open` remove it, and leave no orphan comment behind.
+
+A comment on the next line belongs to no declaration. A `/** doc */` comment right after a
+declaration, even on the same line, belongs to the next declaration. It never belongs to the one
+before it.
+
+## `set decl --before` / `--after`: insert next to an anchor
+
+By default, `set decl` adds a new declaration at the end of its module. Pass `--before <path>` or
+`--after <path>` to put it next to an existing declaration instead.
+
+ReScript needs a name defined before its use. If an earlier declaration already uses the new name,
+pass `--before` with that declaration as the anchor:
+
+```sh
+resq set decl src/Main.res --name helper --content 'let helper = x => x * 2' --before main
+```
+
+This adds `helper` right before `main`. The anchor must be in the same module as the new name.
+`--before` keeps the anchor's own decorators and doc comment attached to the anchor. `--after`
+keeps the anchor's own trailing comment attached to the anchor, and inserts past it.
+
+When `--name` already exists in the file, both flags refuse. Plain `set decl` without them
+replaces an existing declaration in place, so `--before` and `--after` only add a new one.
+
 ## Things that will surprise you
 
 **There are no `expose` / `unexpose` commands.** ReScript's `.resi` interface files are optional and
@@ -84,6 +117,12 @@ one declaration; removing "just `a`" would silently unbind `b`. Pass both names.
 information, so it cannot prove an `open` is unused. Pass `--force` when you know better. It errs
 toward refusing — a spurious refusal costs you a flag, a wrong removal costs you a broken build.
 
+**A whole-pattern `let () = …` or `let _ = …` has a real address.** The address is the literal
+text `()` or `_`. Quote it in the shell. Inside a module, address it the same way: `Inner.()`. Pass
+`--before` or `--after` on `set decl` to always add a new one of these. Omit both, and the command
+refuses when the module already has one. Pass `--name '()'` (or `--name '_'`) instead, to replace
+the existing one.
+
 ## Known gaps
 
 A few constructs do not parse under the pinned grammar (upstream `tree-sitter-rescript` bugs):
@@ -96,3 +135,15 @@ sugar is invisible to `refs`.
 and flags shadowed hits as `unqualified-shadowed` rather than dropping them. Before a rename, prefer
 a false positive you can dismiss over a missed use. It does **not** follow `include` transitively —
 that is its largest gap.
+
+Anonymous bindings add a few more gaps:
+
+- Two `let () = …` bindings in one module are ambiguous, and so are two `let _ = …` bindings.
+  `get`, `patch`, `rm decl`, and `set decl --name` all refuse them. Use a text edit instead. `set
+  decl --before`/`--after` can still add a third past the ambiguous pair.
+- A pattern with no name, other than the whole-pattern `()` or `_`, still has no address. `let
+  (_, _) = pair` is one example.
+- A top-level expression that is not a binding has no address. `main()` on its own line is one
+  example.
+- `refs` on `()` or `_` returns nothing at all, not even its own definition. `grep --definitions`
+  is different: it returns one definition row, keyed by the literal text `()` or `_`.
