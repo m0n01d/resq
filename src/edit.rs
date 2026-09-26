@@ -41,7 +41,7 @@ use tree_sitter::Node;
 
 /// `resq set decl <FILE> [--name <PATH>] [--content <SRC> | stdin] [--before <PATH> | --after <PATH>]`.
 pub fn run_set_decl(args: SetDecl) -> Result<()> {
-    let content = choose_content(args.content, read_stdin_if_piped()?)?;
+    let content = choose_content(args.content, read_stdin_if_piped)?;
     set_decl_at(
         &args.file,
         args.name.as_deref(),
@@ -465,7 +465,7 @@ fn ensure_all_names_covered(
 }
 
 // =============================================================================================
-// Content selection: exactly one of --content / stdin
+// Content selection: --content, else stdin
 // =============================================================================================
 
 /// Read stdin when it is piped or redirected, `None` when it is an interactive terminal (reading
@@ -485,19 +485,25 @@ fn read_stdin_if_piped() -> Result<Option<String>> {
     Ok(Some(buffer))
 }
 
-/// Content comes from `--content` **or** stdin — exactly one. Both is an error (we cannot know
-/// which the user meant), neither is an error (there is nothing to write).
+/// Content comes from `--content` when it is given, and from stdin when it is not. No content at
+/// all is an error (there is nothing to write).
 ///
-/// Split out from [`read_stdin_if_piped`] so the decision is a pure function the tests can drive;
-/// `stdin` is `None` when stdin was a terminal or was empty.
-pub fn choose_content(flag: Option<String>, stdin: Option<String>) -> Result<String> {
-    match (flag, stdin) {
-        (Some(_), Some(_)) => {
-            bail!("resq set decl: --content and stdin both provided; pass exactly one")
-        }
-        (Some(content), None) => Ok(content),
-        (None, Some(content)) => Ok(content),
-        (None, None) => bail!(
+/// `--content` wins, and `read_stdin` then never runs. A stdin read waits for end of file, so a
+/// stdin pipe that stays open (agent harnesses often pass one) would block the command forever,
+/// even with the content already on the command line.
+///
+/// The binary passes [`read_stdin_if_piped`], which yields `None` when stdin is a terminal or
+/// empty. Taking the read as a closure keeps this decision a pure function the tests can drive.
+pub fn choose_content(
+    flag: Option<String>,
+    read_stdin: impl FnOnce() -> Result<Option<String>>,
+) -> Result<String> {
+    if let Some(content) = flag {
+        return Ok(content);
+    }
+    match read_stdin()? {
+        Some(content) => Ok(content),
+        None => bail!(
             "resq set decl: no content; pass --content <SRC> or pipe the declaration on stdin"
         ),
     }

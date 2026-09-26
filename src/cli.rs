@@ -112,7 +112,7 @@ pub struct SetDecl {
     /// Dot-path. Must match the parsed name in content if content has one.
     #[arg(long)]
     pub name: Option<String>,
-    /// Inline content (exactly-one-of with stdin)
+    /// Inline content. When you give it, resq does not read stdin.
     #[arg(long)]
     pub content: Option<String>,
     /// Insert a new declaration immediately before this dot-path, keeping its decorators and doc

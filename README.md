@@ -235,6 +235,8 @@ ok
 ```
 
 Also `add open` and `rm open`. Content for `set decl` comes from `--content` or stdin.
+`--content` wins: if you give it, `set decl` does not read stdin. A stdin pipe that stays open
+then cannot make the command wait. Some agent tools run each command with such a pipe.
 
 `set decl --before <path>` and `--after <path>` insert a new declaration next to an existing one.
 By default, `set decl` appends a new declaration at the end of the module instead. Use `--before`
