@@ -71,7 +71,7 @@ usually the exact command to fix it.
 ## Trailing comments travel with the declaration
 
 A declaration owns the comments that follow it on its own last line. This is a `//` comment, or a
-`/* */` comment that is not a `/**` doc comment. Four commands respect it:
+`/* */` comment that is not a `/**` doc comment. These commands respect it:
 
 - `get` includes it.
 - `patch` can edit text inside it.
@@ -101,7 +101,7 @@ This adds `helper` right before `main`. The anchor must be in the same module as
 `--before` keeps the anchor's own decorators and doc comment attached to the anchor. `--after`
 keeps the anchor's own trailing comment attached to the anchor, and inserts past it.
 
-When `--name` already exists in the file, both flags refuse. This check looks at every name the
+When `--name` already exists in the module, both flags refuse. This check looks at every name the
 new content binds, not only `--name` itself. `()` and `_` bind no name, so they are exempt. Plain
 `set decl` without them replaces an existing declaration in place, so `--before` and `--after`
 only add a new one.
