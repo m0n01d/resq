@@ -215,8 +215,8 @@ fn decl_end_node<'a>(node: Node<'a>, src: &str) -> Node<'a> {
             cursor = next;
             continue;
         }
-        let is_trailing_comment =
-            next.kind() == "line_comment" || (next.kind() == "block_comment" && !is_doc_comment(next, src));
+        let is_trailing_comment = next.kind() == "line_comment"
+            || (next.kind() == "block_comment" && !is_doc_comment(next, src));
         if !is_trailing_comment || next.start_position().row != end_row {
             break;
         }

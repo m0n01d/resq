@@ -44,7 +44,8 @@ const KNOWN_GAPS: &[(&str, &str)] = &[
 #[test]
 fn known_gaps_still_fail() {
     let mut p = tree_sitter::Parser::new();
-    p.set_language(&tree_sitter_rescript::LANGUAGE.into()).unwrap();
+    p.set_language(&tree_sitter_rescript::LANGUAGE.into())
+        .unwrap();
     let mut now_passing = Vec::new();
     for (label, src) in KNOWN_GAPS {
         let tree = p.parse(*src, None).unwrap();
@@ -76,10 +77,14 @@ fn gaps_are_narrow() {
             "module M = {\n  let x = 1\n  /* one */\n}",
         ),
         ("ordinary qualified access", "let x = Types.msg"),
-        ("explicit local open block form", "let x = { open Types; msg }"),
+        (
+            "explicit local open block form",
+            "let x = { open Types; msg }",
+        ),
     ];
     let mut p = tree_sitter::Parser::new();
-    p.set_language(&tree_sitter_rescript::LANGUAGE.into()).unwrap();
+    p.set_language(&tree_sitter_rescript::LANGUAGE.into())
+        .unwrap();
     for (label, src) in must_pass {
         let tree = p.parse(*src, None).unwrap();
         assert!(

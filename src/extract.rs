@@ -107,10 +107,10 @@ fn resolve_one(file: &Path, src: &str, found: &[Found], path: &ModulePath) -> Re
 /// Per SPEC §2, `get` is a tolerant read command: a parse error produces a stderr warning, not an
 /// abort — extraction proceeds against whatever the grammar could recover.
 pub fn extract_group(file: &Path, paths: &[String]) -> Result<Vec<GetResult>> {
-    let src = fs::read_to_string(file)
-        .with_context(|| format!("failed to read {}", file.display()))?;
-    let tree = parser::parse(&src)
-        .with_context(|| format!("failed to parse {}", file.display()))?;
+    let src =
+        fs::read_to_string(file).with_context(|| format!("failed to read {}", file.display()))?;
+    let tree =
+        parser::parse(&src).with_context(|| format!("failed to parse {}", file.display()))?;
     if tree.root_node().has_error() {
         eprintln!(
             "warning: {} has parse errors; extraction may be incomplete",
@@ -197,7 +197,10 @@ fn build_groups(
     match (file, from.is_empty()) {
         (Some(file), true) => {
             if names.is_empty() {
-                bail!("resq get {}: at least one dot-path is required", file.display());
+                bail!(
+                    "resq get {}: at least one dot-path is required",
+                    file.display()
+                );
             }
             Ok(vec![(file, names)])
         }
@@ -228,7 +231,12 @@ fn render(results: &[GetResult], format: Format) {
 }
 
 /// Entry point wired from `main.rs`'s `Command::Get` arm.
-pub fn run(file: Option<PathBuf>, names: Vec<String>, from: Vec<String>, format: Format) -> Result<()> {
+pub fn run(
+    file: Option<PathBuf>,
+    names: Vec<String>,
+    from: Vec<String>,
+    format: Format,
+) -> Result<()> {
     let groups = build_groups(file, names, from)?;
     let results = extract_many(&groups)?;
     render(&results, format);

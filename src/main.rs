@@ -44,7 +44,12 @@ fn main() -> anyhow::Result<()> {
         Command::Set { command } => match command {
             SetCommand::Decl(args) => resq::edit::run_set_decl(args),
         },
-        Command::Patch { file, name, old, new } => resq::edit::run_patch(&file, &name, &old, &new),
+        Command::Patch {
+            file,
+            name,
+            old,
+            new,
+        } => resq::edit::run_patch(&file, &name, &old, &new),
         Command::Rm { command } => match command {
             RmCommand::Decl(args) => resq::edit::run_rm_decl(args),
             RmCommand::Open(args) => resq::imports::run_rm_open(args),

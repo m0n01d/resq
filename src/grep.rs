@@ -368,7 +368,10 @@ fn discover_files(path: Option<&Path>) -> Result<Vec<PathBuf>> {
         .ignore(true)
         .filter_entry(|entry| {
             !(entry.file_type().is_some_and(|ft| ft.is_dir())
-                && matches!(entry.file_name().to_str(), Some("node_modules") | Some("lib")))
+                && matches!(
+                    entry.file_name().to_str(),
+                    Some("node_modules") | Some("lib")
+                ))
         })
         .build();
 
