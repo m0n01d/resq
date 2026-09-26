@@ -37,10 +37,10 @@ fn assert_reparses_clean(path: &Path) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The repro from the brief: `type tab = ScanTab | HaulTab // brain confirmed done; ...`
+// The repro from the brief, with made-up names: `type tab = HomeTab | SettingsTab // sync confirmed done; ...`
 // ---------------------------------------------------------------------------------------------
 
-const REPRO: &str = "type tab = ScanTab | HaulTab // brain confirmed done; polling continues until emailedAt\nlet other = 1\n";
+const REPRO: &str = "type tab = HomeTab | SettingsTab // sync confirmed done; polling continues until savedAt\nlet other = 1\n";
 
 #[test]
 fn get_includes_the_trailing_comment() {
@@ -50,7 +50,7 @@ fn get_includes_the_trailing_comment() {
     assert!(
         results[0]
             .source
-            .contains("// brain confirmed done; polling continues until emailedAt"),
+            .contains("// sync confirmed done; polling continues until savedAt"),
         "get did not include the trailing comment:\n{}",
         results[0].source
     );
@@ -79,7 +79,7 @@ fn rm_decl_leaves_no_orphan_comment() {
     rm_decl(&file, &["tab".to_string()]).expect("rm decl tab");
     let after = read(&file);
     assert!(
-        !after.contains("brain confirmed done"),
+        !after.contains("sync confirmed done"),
         "trailing comment was left as an orphan:\n{after}"
     );
     assert_eq!(after.trim(), "let other = 1");
@@ -89,10 +89,10 @@ fn rm_decl_leaves_no_orphan_comment() {
 #[test]
 fn set_decl_replaces_declaration_and_its_trailing_comment() {
     let (_dir, file) = scratch_file("Tabs.res", REPRO);
-    set_decl(&file, Some("tab"), "type tab = ScanTab").expect("replace tab");
+    set_decl(&file, Some("tab"), "type tab = HomeTab").expect("replace tab");
     let after = read(&file);
-    assert!(!after.contains("brain confirmed done"));
-    assert!(after.contains("type tab = ScanTab"));
+    assert!(!after.contains("sync confirmed done"));
+    assert!(after.contains("type tab = HomeTab"));
     assert!(after.contains("let other = 1"));
     assert_reparses_clean(&file);
 }
