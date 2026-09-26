@@ -103,9 +103,11 @@ fn write_steps(_project: &Path) -> Vec<(&'static str, Vec<String>)> {
                 "--new", "scratch marker",
             ]),
         ),
-        // `rm decl` must take the trailing comment with it, leaving no orphan behind.
+        // A comment cannot break compilation, so this step cannot catch a regression in comment
+        // removal. It checks only that the command succeeds and the file still compiles.
+        // `tests/trailing_comments.rs` has the real check for the orphan comment.
         (
-            "rm decl (removes scratchNote and its trailing comment)",
+            "rm decl (scratchNote, command succeeds and build stays green)",
             s(&["rm", "decl", "src/Main.res", "scratchNote"]),
         ),
         // `let () = ...` is a real, addressable declaration (TASK 1's anonymous-binder fix):
